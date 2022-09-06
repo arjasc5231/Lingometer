@@ -8,6 +8,8 @@
 
 volatile int mode=1;
 // 1: 측정중 0: 측정 중지 2: 학습
+volatile int light=1;
+// 1: 화면 켜짐  0: 화면 꺼짐
 
 volatile int button1_chk=1; //버튼1 조작용 변수
 volatile unsigned long b1_in_time=1;
@@ -56,6 +58,11 @@ void loop() {
          button1_chk=1;
         }
       }
+
+   if(button2==0){
+    if(light==1){light=0;}
+    else if(light==0){light=1;}    
+    }
 
   if(mode==1){
     onRecording(num_words);
