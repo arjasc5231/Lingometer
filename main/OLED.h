@@ -42,5 +42,14 @@ void onRecording(int num){
   display.println("STOP");
   
   display.display();
-  
   }
+
+//학습 모드일 때, 문장 출력하도록
+  void forLearning(String a){
+    display.clearDisplay();
+    display.setTextSize(1.5);
+    display.setTextColor(WHITE);
+    display.setCursor(15,14);
+    display.println(a);
+    display.display();
+    }
