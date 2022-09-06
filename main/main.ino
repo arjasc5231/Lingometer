@@ -17,7 +17,8 @@ volatile unsigned long b1_in_time=1;
 volatile unsigned long b1_out_time=1;
 volatile unsigned long b2_in_time=1;
 volatile unsigned long b2_out_time=1;
-volatile unsigned long lastControl=1;
+volatile unsigned long last_control=1;
+volatile unsigned long now=1;
 
 volatile unsigned int num_words=100; // 측정된 단어 수
 
@@ -45,6 +46,7 @@ void loop() {
   if(button1==0){
     if(button1_chk==1){
       button1_chk=0;
+      last_control=millis();
       b1_in_time=millis();
       }
     }
@@ -60,12 +62,15 @@ void loop() {
             num_words=0;
             }
          button1_chk=1;
+         last_control=millis();
+         light=1;
         }
       }
 
    if(button2==0){
     if(button2_chk==1){
       button2_chk=0;
+      last_control=millis();
       b2_in_time=millis();
       }
     }
@@ -84,9 +89,15 @@ void loop() {
         } 
        else{light=1; mode=2;}
       button2_chk=1;
+      last_control=millis();
       }
     }
-    
+
+//마지막 조작 이후 10초가 지나면 화면 꺼짐
+  now=millis();
+  unsigned long after_control= now - last_control;
+  Serial.println(after_control);
+  if(after_control>10000){light=0; lightOff();}
 
 //측정 상태에 따른 기능 변화
   if(mode==1){
@@ -103,6 +114,7 @@ void loop() {
   else{
     if(light==1){
     LearningVoice();
+    last_control=millis();
     mode=1;    
     }}
 
