@@ -1,11 +1,14 @@
-#include "OLED.h" //OLED 출력 조작 관련 함수
-#include "CountingWords.h" //단어 세는 함수
 #include "Const.h" //기본 상수값 필요한 게 생기면 여기에.
 
-volatile int mode=1;
+#include "OLED.h" //OLED 출력 조작 관련 함수
+
+#include "CountingWords.h" //단어 세는 함수
+#include "LearningVoice.h" //목소리 학습 함수
+
+volatile int mode=2;
 // 1: 측정중 0: 측정 중지 2: 학습
 volatile int num_words=100; // 측정된 단어 수
-String tmp_lr_words="Hello World"; //임시 학습용 문장
+
 
 void setup() {
     Serial.begin(9600);
@@ -30,7 +33,8 @@ void loop() {
     onStop(num_words);
     }
   else{
-    forLearning(tmp_lr_words);
+    LearningVoice();
+    mode=1;    
     }
 
 }
