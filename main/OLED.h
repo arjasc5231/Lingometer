@@ -40,3 +40,8 @@ void onRecording(int num){
     display.println(a);
     display.display();
     }
+
+  void lightOff(void){
+    display.clearDisplay();
+    display.display();
+    }

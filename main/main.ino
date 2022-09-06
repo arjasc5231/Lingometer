@@ -12,8 +12,12 @@ volatile int light=1;
 // 1: 화면 켜짐  0: 화면 꺼짐
 
 volatile int button1_chk=1; //버튼1 조작용 변수
+volatile int button2_chk=1; //버튼2 조작용 변수
 volatile unsigned long b1_in_time=1;
 volatile unsigned long b1_out_time=1;
+volatile unsigned long b2_in_time=1;
+volatile unsigned long b2_out_time=1;
+volatile unsigned long lastControl=1;
 
 volatile unsigned int num_words=100; // 측정된 단어 수
 
@@ -47,8 +51,8 @@ void loop() {
     else{
       if(button1_chk==0){
         b1_out_time=millis();
-        unsigned long duration = b1_out_time - b1_in_time;
-        if(duration<2000){
+        unsigned long duration1 = b1_out_time - b1_in_time;
+        if(duration1<2000){
           if(mode==1){mode=0;}
           else if(mode==0){mode=1;}
           }
@@ -60,22 +64,46 @@ void loop() {
       }
 
    if(button2==0){
-    if(light==1){light=0;}
-    else if(light==0){light=1;}    
+    if(button2_chk==1){
+      button2_chk=0;
+      b2_in_time=millis();
+      }
     }
+    else{
+      if(button2_chk==0){
+      b2_out_time=millis();
+      unsigned long duration2 = b2_out_time - b2_in_time;
+      if(duration2<2000){
+        if(light==1){
+          light=0;
+          lightOff();
+          }
+        else if(light==0){
+          light=1;
+          }      
+        } 
+       else{light=1; mode=2;}
+      button2_chk=1;
+      }
+    }
+    
 
+//측정 상태에 따른 기능 변화
   if(mode==1){
+    if(light==1){
     onRecording(num_words);
 //아래 주석은 딜레이때문에 버튼 테스트가 어려워서 일단 주석처리. 
 //    delay(2000);
 //    num_words=num_words+Count();
-    }
+    }}
   else if(mode==0){
+    if(light==1){
     onStop(num_words);
-    }
+    }}
   else{
+    if(light==1){
     LearningVoice();
     mode=1;    
-    }
+    }}
 
 }
