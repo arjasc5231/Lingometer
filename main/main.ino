@@ -1,6 +1,6 @@
 #include "OLED.h"
 
-volatile int mode=1;
+volatile int mode=0;
 // 1: 측정중 0: 측정 중지 2: 학습
 volatile int num_words=100;
 
@@ -23,7 +23,9 @@ void loop() {
     delay(2000);
     num_words=num_words+50;
     }
-  else if(mode==0){}
+  else if(mode==0){
+    onStop(num_words);
+    }
   else{}
 
 }

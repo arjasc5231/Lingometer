@@ -16,11 +16,31 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 
+//단어 카운팅 중일 때 디스플레이
 void onRecording(int num){
   display.clearDisplay();
+  //숫자 디스플레이
   display.setTextSize(2);
   display.setTextColor(WHITE);
   display.setCursor(50,10);
   display.println(num);
   display.display();
+  
+  }
+
+//측정 일시정지 중일 때 디스플레이
+  void onStop(int num){
+  display.clearDisplay();
+  //숫자 디스플레이
+  display.setTextSize(2);
+  display.setTextColor(WHITE);
+  display.setCursor(50,10);
+  display.println(num);
+
+  display.setTextSize(1);
+  display.setCursor(10,5);
+  display.println("STOP");
+  
+  display.display();
+  
   }
