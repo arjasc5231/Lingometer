@@ -1,4 +1,4 @@
 
 int Count(void){
-  return 50;
+  return 1;
   }

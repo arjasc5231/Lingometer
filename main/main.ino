@@ -1,7 +1,8 @@
+#include<PDM.h>
+
 #include "Const.h" //기본 상수값 필요한 게 생기면 여기에.
 
 #include "OLED.h" //OLED 출력 조작 관련 함수
-#include "Mic.h" //음성 입력 관련 함수
 
 #include "CountingWords.h" //단어 세는 함수
 #include "LearningVoice.h" //목소리 학습 함수
@@ -21,12 +22,14 @@ volatile unsigned long last_control=1;
 volatile unsigned long now=1;
 
 volatile unsigned int num_words=100; // 측정된 단어 수
+short Buffer[256]; // 음성 신호 입력받을 변수
+volatile int Read; //음성 신호 입력용 변수
 
 
 void setup() {
     Serial.begin(9600);
     pinMode(2, INPUT_PULLUP);
-    pinMode(4, INPUT_PULLUP); 
+    pinMode(4, INPUT_PULLUP); //조작 버튼 두 개 핀모드 설정
     
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
   if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
@@ -36,6 +39,12 @@ void setup() {
   // Clear the OLED buffer
   display.clearDisplay();
   display.display();
+
+  PDM.onReceive(onPDMdata); //PDM 작동 확인
+  if(!PDM.begin(1,16000)){
+    Serial.println("Failed to start PDM!");
+    while(1);
+    }
 
 }
 
@@ -96,16 +105,14 @@ void loop() {
 //마지막 조작 이후 10초가 지나면 화면 꺼짐
   now=millis();
   unsigned long after_control= now - last_control;
-  Serial.println(after_control);
   if(after_control>10000){light=0; lightOff();}
 
 //측정 상태에 따른 기능 변화
   if(mode==1){
     if(light==1){
     onRecording(num_words);
-//아래 주석은 딜레이때문에 버튼 테스트가 어려워서 일단 주석처리. 
-//    delay(2000);
-//    num_words=num_words+Count();
+    delay(10);
+    num_words=num_words+Count();
     }}
   else if(mode==0){
     if(light==1){
@@ -118,4 +125,17 @@ void loop() {
     mode=1;    
     }}
 
+    //음성 신호 받는거 확인용.
+    if(Read){
+      for(int i=0; i<Read; i++){Serial.println(Buffer[i]);}
+      Read=0;
+      }
+
 }
+
+//마이크 입력받는 함수
+void onPDMdata(){
+  int bytesAvailable=PDM.available();
+  PDM.read(Buffer, bytesAvailable);
+  Read=bytesAvailable/2;
+  }
