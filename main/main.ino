@@ -112,8 +112,9 @@ void loop() {
     if(light==1){
     onRecording(num_words);
     delay(10);
+    }
     num_words=num_words+Count();
-    }}
+    }
   else if(mode==0){
     if(light==1){
     onStop(num_words);
