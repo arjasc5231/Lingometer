@@ -1,4 +1,5 @@
-#include<PDM.h>
+#include <PDM.h>
+#include "protothreads.h" //PT 라이브러리
 
 #include "Const.h" //기본 상수값 필요한 게 생기면 여기에.
 
@@ -7,13 +8,14 @@
 #include "CountingWords.h" //단어 세는 함수
 #include "LearningVoice.h" //목소리 학습 함수
 
+
 volatile int mode=1;
 // 1: 측정중 0: 측정 중지 2: 학습
 volatile int light=1;
 // 1: 화면 켜짐  0: 화면 꺼짐
 
-volatile int button1_chk=1; //버튼1 조작용 변수
-volatile int button2_chk=1; //버튼2 조작용 변수
+volatile int button1_chk=1; //버튼1 조작용 변수, 눌리면 0, 아니면 1
+volatile int button2_chk=1; //버튼2 조작용 변수, 눌리면 0, 아니면 1
 volatile unsigned long b1_in_time=1;
 volatile unsigned long b1_out_time=1;
 volatile unsigned long b2_in_time=1;
@@ -24,6 +26,64 @@ volatile unsigned long now=1;
 volatile unsigned int num_words=100; // 측정된 단어 수
 short Buffer[256]; // 음성 신호 입력받을 변수
 volatile int Read; //음성 신호 입력용 변수
+
+pt ptState;
+int StateThread(struct pt* pt){
+  PT_BEGIN(pt);
+  for(;;){
+    button1_chk=digitalRead(2);
+    button2_chk=digitalRead(4);
+    PT_YIELD(pt);
+    }
+    PT_END(pt);
+  }
+
+pt ptButton1Time; // 버튼1 프레스 시간 확인용 PT
+int button1TimeThread(struct pt* pt){
+  PT_BEGIN(pt);
+  for(;;){
+      PT_YIELD(pt);
+      PT_WAIT_UNTIL(pt, button1_chk==0);
+      b1_in_time=millis();
+      last_control=millis();
+      Serial.println("button1ininininin");
+      PT_YIELD(pt);
+      PT_WAIT_UNTIL(pt,button1_chk==1);
+      b1_out_time=millis();
+      last_control=millis();
+      Serial.println("button1outoutoutoutout");
+      PT_YIELD(pt);
+    }
+  PT_END(pt)
+  }
+
+pt ptButton2Time; // 버튼2 프레스 시간 확인용 PT
+int button2TimeThread(struct pt* pt){
+  PT_BEGIN(pt);
+
+  for(;;){
+      PT_YIELD(pt);
+      PT_WAIT_UNTIL(pt, button2_chk==0);
+      b2_in_time=millis();
+      last_control=millis();
+      Serial.println("button2ininininin");
+      PT_YIELD(pt);
+      PT_WAIT_UNTIL(pt,button2_chk==1);
+      b2_out_time=millis();
+      last_control=millis();
+      Serial.println("button2outoutoutoutout");
+      PT_YIELD(pt);     
+      
+    }
+  PT_END(pt)
+  }
+
+//마이크 입력받는 함수
+void onPDMdata(){
+  int bytesAvailable=PDM.available();
+  PDM.read(Buffer, bytesAvailable);
+  Read=bytesAvailable/2;
+  }
 
 
 void setup() {
@@ -49,7 +109,12 @@ void setup() {
 }
 
 void loop() {
-  //버튼 조작
+  PT_SCHEDULE(button1TimeThread(&ptButton1Time));
+  PT_SCHEDULE(button2TimeThread(&ptButton2Time));
+  PT_SCHEDULE(StateThread(&ptState));
+
+
+/*  //버튼 조작
   int button1=digitalRead(2);
   int button2=digitalRead(4);
   if(button1==0){
@@ -131,12 +196,5 @@ void loop() {
       for(int i=0; i<Read; i++){Serial.println(Buffer[i]);}
       Read=0;
       }
-
+*/
 }
-
-//마이크 입력받는 함수
-void onPDMdata(){
-  int bytesAvailable=PDM.available();
-  PDM.read(Buffer, bytesAvailable);
-  Read=bytesAvailable/2;
-  }
