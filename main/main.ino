@@ -41,6 +41,8 @@ volatile unsigned int num_words=100; // 측정된 단어 수
 short Buffer[256]; // 음성 신호 입력받을 변수
 volatile int Read; //음성 신호 입력용 변수
 
+volatile int tmp_count=0;
+volatile int chk_counted=0;
 
 
 // Globals, used for compatibility with Arduino-style sketches. 화자 인식 관련 선언
@@ -138,7 +140,12 @@ int countWordsThread(struct pt* pt){
   PT_BEGIN(pt);
   for(;;){
     if(mode==1){
-      num_words=num_words+Count();
+      //num_words=num_words+Count();
+      //원래게 위에거(아마도?) 지만, 특징 추출 테스트용으로 잠시 변경
+      if(chk_counted==1){
+      num_words=num_words+tmp_count;
+      chk_counted=0;
+      }
       }
     PT_YIELD(pt);
   }
@@ -150,31 +157,34 @@ int checkSpeakerThread(struct pt* pt){
   PT_BEGIN(pt);
   for(;;){
     if(mode==1){
-    model_input = interpreter->input(0);
+      model_input = interpreter->input(0);
 
   //인풋 입력
-  for (int i = 0; i < 49*40; i++) {
-    model_input->data.int8[i] = 1; //feature_buffer[i];
-  }
+    for (int i = 0; i < 49*40; i++) {
+      model_input->data.int8[i] = 1; //feature_buffer[i];
+    }
 
   //모델 실행
-   TfLiteStatus invoke_status = interpreter->Invoke();
-  if (invoke_status != kTfLiteOk) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed");
-  }
+    TfLiteStatus invoke_status = interpreter->Invoke();
+    if (invoke_status != kTfLiteOk) {
+      TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed");
+    }
 
   //출력 얻기
-  TfLiteTensor* output = interpreter->output(0);
+    TfLiteTensor* output = interpreter->output(0);
 
   //출력 차원 맞는지 체크 및 출력
-   for (int i=0; i<10; i++) {
-   Serial.print(output->data.int8[i]);
-  }
-    if ((output->dims->size != 2) ||
-      (output->dims->data[0] != 1) ||
-      (output->dims->data[1] != 50)) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Bad output tensor parameters in model");
-  }
+    for (int i=0; i<10; i++) {
+    Serial.print(output->data.int8[i]);
+    }
+      if ((output->dims->size != 2) ||
+        (output->dims->data[0] != 1) ||
+        (output->dims->data[1] != 50)) {
+      TF_LITE_REPORT_ERROR(error_reporter, "Bad output tensor parameters in model");
+    }
+    tmp_count=output->data.int8[2];
+    chk_counted=1;
+  
     }
       PT_YIELD(pt);
     }
@@ -196,7 +206,7 @@ int displayNumThread(struct pt* pt){
       }} // 모드 2일때 학습화면 디스플레이 및, 학습해주는 함수 호출
       else if(light==0){lightOff();} // 불 안들어와있으면 꺼줌.
       
-      if(millis()-last_control>10000){ //마지막 조작에서 10초 이상 지나면
+      if(millis()-last_control>100000){ //마지막 조작에서 10초 이상 지나면 -> 일단 100초로 해둠.
         light=0;
         lightOff(); //불 끄고
         PT_YIELD(pt);
