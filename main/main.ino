@@ -1,12 +1,26 @@
 #include <PDM.h>
 #include "protothreads.h" //PT 라이브러리
 
+#include <TensorFlowLite.h> //이 아래로 화자인식 관련 파일, 라이브러리
+
+#include "micro_features_micro_model_settings.h"
+#include "micro_features_model.h"
+
+#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
+#include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/version.h" //여기까지 화자인식 관련 파일, 라이브러리
+
+
 #include "Const.h" //기본 상수값 필요한 게 생기면 여기에.
 
 #include "OLED.h" //OLED 출력 조작 관련 함수
 
 #include "CountingWords.h" //단어 세는 함수
 #include "LearningVoice.h" //목소리 학습 함수
+
 
 
 volatile int mode=1;
@@ -26,6 +40,27 @@ volatile unsigned long now=1;
 volatile unsigned int num_words=100; // 측정된 단어 수
 short Buffer[256]; // 음성 신호 입력받을 변수
 volatile int Read; //음성 신호 입력용 변수
+
+
+
+// Globals, used for compatibility with Arduino-style sketches. 화자 인식 관련 선언
+namespace {
+tflite::ErrorReporter* error_reporter = nullptr;
+const tflite::Model* model = nullptr;
+tflite::MicroInterpreter* interpreter = nullptr;
+TfLiteTensor* model_input = nullptr;
+int32_t previous_time = 0;
+
+// Create an area of memory to use for input, output, and intermediate arrays.
+// The size of this will depend on the model you're using, and may need to be
+// determined by experimentation.
+constexpr int kTensorArenaSize = 40000;
+uint8_t tensor_arena[kTensorArenaSize];
+int8_t feature_buffer[kFeatureElementCount];
+int8_t* model_input_buffer = nullptr;
+}  // namespace 여기까지 화자 인식 관련 선언
+
+
 
 pt ptState;
 int stateThread(struct pt* pt){
@@ -110,6 +145,42 @@ int countWordsThread(struct pt* pt){
   PT_END(pt);
   }
 
+pt ptCheckSpeaker; //모드1에서 화자 인식용 pt
+int checkSpeakerThread(struct pt* pt){
+  PT_BEGIN(pt);
+  for(;;){
+    if(mode==1){
+    model_input = interpreter->input(0);
+
+  //인풋 입력
+  for (int i = 0; i < 49*40; i++) {
+    model_input->data.int8[i] = 1; //feature_buffer[i];
+  }
+
+  //모델 실행
+   TfLiteStatus invoke_status = interpreter->Invoke();
+  if (invoke_status != kTfLiteOk) {
+    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed");
+  }
+
+  //출력 얻기
+  TfLiteTensor* output = interpreter->output(0);
+
+  //출력 차원 맞는지 체크 및 출력
+   for (int i=0; i<10; i++) {
+   Serial.print(output->data.int8[i]);
+  }
+    if ((output->dims->size != 2) ||
+      (output->dims->data[0] != 1) ||
+      (output->dims->data[1] != 50)) {
+    TF_LITE_REPORT_ERROR(error_reporter, "Bad output tensor parameters in model");
+  }
+    }
+      PT_YIELD(pt);
+    }
+  PT_END(pt);
+  }
+
 
 pt ptDisplayNum; //모드에 맞는 디스플레이용 pt
 int displayNumThread(struct pt* pt){
@@ -171,6 +242,38 @@ void setup() {
     while(1);
     }
 
+
+  // 텐서플로우의 에러 리포터
+  static tflite::MicroErrorReporter micro_error_reporter;
+  error_reporter = &micro_error_reporter;
+
+  // 모델 로드, 버전 확인
+  model = tflite::GetModel(g_model);
+  if (model->version() != TFLITE_SCHEMA_VERSION) {
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Model provided is schema version %d not equal "
+                         "to supported version %d.",
+                         model->version(), TFLITE_SCHEMA_VERSION);
+  }
+
+  // 모든 Op load. 필요한 Op만 로드해서 메모리를 줄일수도 있음
+  static tflite::AllOpsResolver resolver;
+
+  // 인터프리터 빌드  
+  static tflite::MicroInterpreter static_interpreter(
+      model, resolver, tensor_arena, kTensorArenaSize, error_reporter);
+  interpreter = &static_interpreter;
+
+  // 메모리 할당, 에러 체크
+  TfLiteStatus allocate_status = interpreter->AllocateTensors();
+  if (allocate_status != kTfLiteOk) {
+    TF_LITE_REPORT_ERROR(error_reporter, "AllocateTensors() failed");
+  }
+
+  // 모델 인풋 주소 얻기
+  model_input = interpreter->input(0);
+  model_input_buffer = model_input->data.int8;
+
 }
 
 void loop() {
@@ -179,6 +282,7 @@ void loop() {
   PT_SCHEDULE(stateThread(&ptState));
   PT_SCHEDULE(countWordsThread(&ptCountWords));
   PT_SCHEDULE(displayNumThread(&ptDisplayNum));
+  PT_SCHEDULE(checkSpeakerThread(&ptCheckSpeaker));
 
 
 /*
