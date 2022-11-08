@@ -19,6 +19,10 @@
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
+#include "micro_features_micro_features_generator.h" //이거랑 아래거는 스펙토그램용
+#include "tensorflow/lite/micro/micro_error_reporter.h" 
+
+
 #include "speaker_verification_model_settings.h"
 #include "speaker_verification_model.h"
 #include "word_counting_model.h"
@@ -40,7 +44,7 @@ volatile unsigned long now=1;
 
 volatile unsigned int num_words=100; // 측정된 단어 수
 short Buffer[256]; // 음성 신호 입력받을 변수
-volatile int Buffer2[500]; //음성 신호 임시 저장용 변수
+short Buffer2[29300]; //음성 신호 임시 저장용 변수
 volatile int w=0; //Buffer2 관리용
 volatile int Read; //음성 신호 입력용 변수
 volatile int conv2spect=0; //스펙토그램 변환 확인용 변수
@@ -55,13 +59,16 @@ const int chipSelect = 10; //SD카드 핀번호 알려줌.
 volatile int tmp_count=0;
 volatile int chk_counted=0;
 
+const int g_yes_feature_data_slice_size = 91*40; //만들 스펙토그램 사이즈
+int8_t yes_calculated_data[g_yes_feature_data_slice_size]; //만든 스펙토그램 저장 공간
+ const int g_yes_30ms_sample_data_size = 29280; //인풋 오디오 데이터 사이즈
 /////////이 아래로 SVWC 전역변수//////////
 // 에러 리포터 전역변수 선언
 tflite::ErrorReporter* error_reporter = nullptr;
 
 float total_words=0; // 총 단어 수
 float enroll_dvec[dvec_dim]; // 화자 등록 d-vector (normalized)
-float thres = 0.0; // SV 역치
+float thres = 200; // SV 역치
 
 // 스펙트로그램
 constexpr int spec_len = 91*40;
@@ -176,25 +183,17 @@ pt ptRecording;
 int recordingThread(struct pt* pt){
   PT_BEGIN(pt);
   for(;;){
-    if(mode==1){
+    if(mode==1 && startSVWC==0){
       if(Read){
         for(int i=0; i<Read; i++){
           Buffer2[w]=Buffer[i];
           w++;
           }
         }
-        if(w>=400){ //Buffer2 꽉차면
+        if(w>=29279){ //Buffer2 꽉차면
         conv2spect=1;
         w=0; //스펙토그램 전환하라는 신호
         }
-      /*
-      if(Read){
-        spectogramFile=SD.open("Specto.txt", FILE_WRITE);
-        for(int i=0; i<Read; i++){
-          spectogramFile.println(Buffer[i]);
-          }
-         spectogramFile.close();
-        }*/
         }
       PT_YIELD(pt);
     }
@@ -206,8 +205,17 @@ int spectoThread(struct pt* pt){
   PT_BEGIN(pt);
   for(;;){
     if(conv2spect==1){
+      static size_t num_samples_read;
+      TfLiteStatus yes_status = GenerateMicroFeatures(
+      error_reporter,Buffer2, g_yes_30ms_sample_data_size,
+      g_yes_feature_data_slice_size, yes_calculated_data, &num_samples_read);
       spectogramFile=SD.open("Specto.txt", FILE_WRITE);
+      for(int i=0; i<g_yes_feature_data_slice_size; i++){
+        spectogramFile.println(yes_calculated_data[i]);
+        }
+        Serial.println("InputSpectogrammmmmmmmmmmmmmmmmmmmmmmmm,,");
       spectogramFile.close();
+      conv2spect=0;
       }
           PT_YIELD(pt);
       }
@@ -224,6 +232,7 @@ int SVWCThread(struct pt* pt){
       spectogramFile=SD.open("Specto.txt");
       
       while(spectogramFile.available()){
+        spec[w2]=spectogramFile.read();
       Serial.println(spec[w2]);
       w2++;
       if(w2==spec_len-1){
@@ -242,21 +251,23 @@ int SVWCThread(struct pt* pt){
       static float score2 = cos_sim(enroll_dvec, SV_output2);
 
       // 처음과 끝 모두 등록 화자가 아니라면 패스
-      if (score1<thres || score2<thres) { } 
+      if (score1>thres && score2>thres) {  
 
       // 스펙트로그램을 91*40으로 쪼개 점수 합산
       for (int i=0; i<spec_len/(91*40); i++) {
         static int WC_output[11];
         WC_call(spec, WC_output);
-        total_words += argmax(WC_output, 11)+1;
-      }
+        w3=1;
+        num_words += argmax(WC_output, 11)+1;
+        last_control=millis();
+         PT_YIELD(pt);
+      }}
       
       w2=0;
       Serial.println("Something Counted");
       }
       }
-      w3=1;
-      conv2spect=0;
+      w3=0;
       startSVWC=0;
       spectogramFile.close();
       Serial.println("SVWC end, remove file...");
@@ -268,7 +279,7 @@ int SVWCThread(struct pt* pt){
   PT_END(pt);
   }
 
-
+/* 이거 사실 필요없을지도
 pt ptCountWords; //모드1에서 단어수 세는용도 pt
 int countWordsThread(struct pt* pt){
   PT_BEGIN(pt);
@@ -277,18 +288,18 @@ int countWordsThread(struct pt* pt){
       if(w3=1){
       num_words=num_words+total_words;
       total_words=0;
-      w3=0;
       }
       //밑은 테스트용. 나중에 한번에 몰아서 하는 식으로 하면 비슷하게 되긴 할 듯?
       /*if(chk_counted==1){
       num_words=num_words+tmp_count;
       chk_counted=0;
-      }*/
+      }
       }
     PT_YIELD(pt);
   }
   PT_END(pt);
   }
+  */
 
 
 pt ptDisplayNum; //모드에 맞는 디스플레이용 pt
@@ -329,7 +340,7 @@ void setup() {
     PT_INIT(&ptButton1Time); //PT들 시작
     PT_INIT(&ptButton2Time);
     PT_INIT(&ptState);
-    PT_INIT(&ptCountWords);
+    //PT_INIT(&ptCountWords);
     PT_INIT(&ptDisplayNum);
     PT_INIT(&ptRecording);
     PT_INIT(&ptSpecto);
@@ -353,6 +364,7 @@ void setup() {
     // 에러 리포터 빌드
   static tflite::MicroErrorReporter micro_error_reporter;
   error_reporter = &micro_error_reporter;
+  InitializeMicroFeatures(error_reporter);
 
   // enroll_dvec 임의로 설정
   for (int i=0;i<dvec_dim;i++){ enroll_dvec[i]=1/dvec_dim; }
@@ -365,9 +377,8 @@ void loop() {
   PT_SCHEDULE(button1TimeThread(&ptButton1Time));
   PT_SCHEDULE(button2TimeThread(&ptButton2Time));
   PT_SCHEDULE(stateThread(&ptState));
-  PT_SCHEDULE(countWordsThread(&ptCountWords));
+//  PT_SCHEDULE(countWordsThread(&ptCountWords));
   PT_SCHEDULE(displayNumThread(&ptDisplayNum));
-//  PT_SCHEDULE(checkSpeakerThread(&ptCheckSpeaker));
   PT_SCHEDULE(recordingThread(&ptRecording));
   PT_SCHEDULE(spectoThread(&ptSpecto));
   PT_SCHEDULE(SVWCThread(&ptSVWC));
