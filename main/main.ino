@@ -81,6 +81,8 @@ TfLiteTensor* SV_model_input = nullptr;
 constexpr int SV_tensorArenaSize = 22500; // 모델에 따라 크기 조정. 나중에 상수파일로 옮기기
 uint8_t SV_tensor_arena[SV_tensorArenaSize];
 int8_t* SV_model_input_buffer = nullptr;
+float score1=0;
+float score2=0;
 
 // WC 모델 전역변수 선언
 const tflite::Model* WC_model = nullptr;
@@ -244,14 +246,14 @@ int SVWCThread(struct pt* pt){
       normalize(SV_output1);
       Serial.println("normalized output");
       for(int i=0;i<50;i++){Serial.println(SV_output1[i]);}
-      static float score1 = cos_sim(enroll_dvec, SV_output1);
+      score1 = cos_sim(enroll_dvec, SV_output1);
 
       // 끝에서 SV돌리고 cosine similarity 계산
       static int* SV_input2 = spec+spec_len-49;
       static float SV_output2[50];
       SV_call(SV_input2, SV_output2);
       normalize(SV_output2);
-      static float score2 = cos_sim(enroll_dvec, SV_output2);
+      score2 = cos_sim(enroll_dvec, SV_output2);
       Serial.println("score is ::::");
       Serial.println(score1);
       Serial.println(score2);
