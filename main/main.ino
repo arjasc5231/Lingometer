@@ -44,7 +44,7 @@ volatile unsigned long now=1;
 
 volatile unsigned int num_words=100; // 측정된 단어 수
 short Buffer[256]; // 음성 신호 입력받을 변수
-short Buffer2[29300]; //음성 신호 임시 저장용 변수
+short Buffer2[512]; //음성 신호 임시 저장용 변수
 volatile int w=0; //Buffer2 관리용
 volatile int Read; //음성 신호 입력용 변수
 volatile int conv2spect=0; //스펙토그램 변환 확인용 변수
@@ -59,16 +59,16 @@ const int chipSelect = 10; //SD카드 핀번호 알려줌.
 volatile int tmp_count=0;
 volatile int chk_counted=0;
 
-const int g_yes_feature_data_slice_size = 91*40; //만들 스펙토그램 사이즈
+const int g_yes_feature_data_slice_size = 40; //만들 스펙토그램 사이즈 91*40?
 int8_t yes_calculated_data[g_yes_feature_data_slice_size]; //만든 스펙토그램 저장 공간
- const int g_yes_30ms_sample_data_size = 29280; //인풋 오디오 데이터 사이즈
+ const int g_yes_30ms_sample_data_size = 480; //인풋 오디오 데이터 사이즈, 29280?
 /////////이 아래로 SVWC 전역변수//////////
 // 에러 리포터 전역변수 선언
 tflite::ErrorReporter* error_reporter = nullptr;
 
 float total_words=0; // 총 단어 수
 float enroll_dvec[dvec_dim]; // 화자 등록 d-vector (normalized)
-float thres = 200; // SV 역치
+float thres = 0; // SV 역치
 
 // 스펙트로그램
 constexpr int spec_len = 91*40;
@@ -190,7 +190,7 @@ int recordingThread(struct pt* pt){
           w++;
           }
         }
-        if(w>=29279){ //Buffer2 꽉차면
+        if(w>=479){ //Buffer2 꽉차면
         conv2spect=1;
         w=0; //스펙토그램 전환하라는 신호
         }
@@ -233,14 +233,17 @@ int SVWCThread(struct pt* pt){
       
       while(spectogramFile.available()){
         spec[w2]=spectogramFile.read();
-      Serial.println(spec[w2]);
+      //Serial.println(spec[w2]);
       w2++;
       if(w2==spec_len-1){
         Serial.println("Something Counting...");
        static int* SV_input1 = spec;
       static float SV_output1[50];
       SV_call(SV_input1, SV_output1);
+      Serial.println("111Called");
       normalize(SV_output1);
+      Serial.println("normalized output");
+      for(int i=0;i<50;i++){Serial.println(SV_output1[i]);}
       static float score1 = cos_sim(enroll_dvec, SV_output1);
 
       // 끝에서 SV돌리고 cosine similarity 계산
@@ -249,10 +252,12 @@ int SVWCThread(struct pt* pt){
       SV_call(SV_input2, SV_output2);
       normalize(SV_output2);
       static float score2 = cos_sim(enroll_dvec, SV_output2);
-
+      Serial.println("score is ::::");
+      Serial.println(score1);
+      Serial.println(score2);
+ 
       // 처음과 끝 모두 등록 화자가 아니라면 패스
-      if (score1>thres && score2>thres) {  
-
+      if (score1>thres && score2>thres){
       // 스펙트로그램을 91*40으로 쪼개 점수 합산
       for (int i=0; i<spec_len/(91*40); i++) {
         static int WC_output[11];
@@ -261,10 +266,12 @@ int SVWCThread(struct pt* pt){
         num_words += argmax(WC_output, 11)+1;
         last_control=millis();
          PT_YIELD(pt);
-      }}
+      }
+      Serial.println("Something Counted");
+      }
       
       w2=0;
-      Serial.println("Something Counted");
+      Serial.println("w2 is now zero.");
       }
       }
       w3=0;
@@ -368,6 +375,8 @@ void setup() {
 
   // enroll_dvec 임의로 설정
   for (int i=0;i<dvec_dim;i++){ enroll_dvec[i]=1/dvec_dim; }
+  for (int i=0;i<10;i++){enroll_dvec[i]=1;}
+  normalize(enroll_dvec);
 
   SV_setup();
   WC_setup();
@@ -521,7 +530,8 @@ void WC_setup(){
 
 void normalize(float* x){
   float sum=0;
-  for (int i;i<dvec_dim;i++){ sum += x[i]; }
+  for (int i;i<dvec_dim;i++){ sum += x[i]*x[i]; }
+  sum=sqrt(sum);
   for (int i;i<dvec_dim;i++){ x[i] /= sum; }
 }
 
