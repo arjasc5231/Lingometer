@@ -12,4 +12,4 @@ constexpr int kFeatureElementCount = (kFeatureSliceSize * kFeatureSliceCount);
 constexpr int kFeatureSliceStrideMs = 20;
 constexpr int kFeatureSliceDurationMs = 30;
 
-constexpr int dvec_dim = 50;
+constexpr int dvec_dim = 25;

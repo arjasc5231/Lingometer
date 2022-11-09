@@ -240,17 +240,17 @@ int SVWCThread(struct pt* pt){
       if(w2==spec_len-1){
         Serial.println("Something Counting...");
        static int* SV_input1 = spec;
-      static float SV_output1[50];
+      static float SV_output1[dvec_dim];
       SV_call(SV_input1, SV_output1);
       Serial.println("111Called");
       normalize(SV_output1);
       Serial.println("normalized output");
-      for(int i=0;i<50;i++){Serial.println(SV_output1[i]);}
+      for(int i=0;i<dvec_dim;i++){Serial.println(SV_output1[i]);}
       score1 = cos_sim(enroll_dvec, SV_output1);
 
       // 끝에서 SV돌리고 cosine similarity 계산
       static int* SV_input2 = spec+spec_len-49;
-      static float SV_output2[50];
+      static float SV_output2[dvec_dim];
       SV_call(SV_input2, SV_output2);
       normalize(SV_output2);
       score2 = cos_sim(enroll_dvec, SV_output2);
@@ -428,13 +428,13 @@ void SV_call(int* input, float* output){
 
   // 모델 아웃풋 얻기, 에러 체크
   TfLiteTensor* SV_model_output = SV_interpreter->output(0);
-  if ((SV_model_output->dims->size != 2) || (SV_model_output->dims->data[0] != 1) || (SV_model_output->dims->data[1] != 50)) {
+  if ((SV_model_output->dims->size != 2) || (SV_model_output->dims->data[0] != 1) || (SV_model_output->dims->data[1] != dvec_dim)) {
     TF_LITE_REPORT_ERROR(error_reporter, "Bad output tensor parameters in model");
     return;
   }
 
   // 모델 아웃풋 출력
-  for (int i=0; i<11; i++) {
+  for (int i=0; i<dvec_dim; i++) {
     output[i] = (float) SV_model_output->data.int8[i];
   }
 }
@@ -540,7 +540,7 @@ void normalize(float* x){
 float cos_sim(float* x, float* y){
   float ret = 0;
   for (int i;i<dvec_dim;i++) { ret += x[i]*y[i]; }
-  return ret;
+  return (ret+1)/2;
 }
 
 int argmax(int* x, int len){
