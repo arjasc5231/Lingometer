@@ -68,11 +68,12 @@ tflite::ErrorReporter* error_reporter = nullptr;
 
 float total_words=0; // 총 단어 수
 float enroll_dvec[dvec_dim]; // 화자 등록 d-vector (normalized)
-float thres = 0; // SV 역치
+float SV_thres = 0; // SV 역치. 0~1
+float VAD_thres = 0; // VAD 역치. 0~128*128
 
 // 스펙트로그램
 constexpr int spec_len = 91*40;
-int spec[spec_len]; // 실전에서는 (n*91)&40이 되도록 제로패딩
+int8_t spec[spec_len]; // 실전에서는 (n*91)&40이 되도록 제로패딩
 
 // SV 모델 전역변수 선언
 const tflite::Model* SV_model = nullptr;
@@ -215,7 +216,19 @@ int spectoThread(struct pt* pt){
       for(int i=0; i<g_yes_feature_data_slice_size; i++){
         spectogramFile.println(yes_calculated_data[i]);
         }
-        Serial.println("InputSpectogrammmmmmmmmmmmmmmmmmmmmmmmm,,");
+        //Serial.println("InputSpectogrammmmmmmmmmmmmmmmmmmmmmmmm,,");
+
+
+      // update_enroll_dvec test
+      update_enroll_dvec(Buffer2, g_yes_30ms_sample_data_size);
+      for(int i=0; i<dvec_dim; i++){ Serial.print(enroll_dvec[i]); }
+      Serial.println("");
+      
+      // is_active test
+      Serial.println(is_active(Buffer2, g_yes_30ms_sample_data_size));
+      
+      
+      
       spectogramFile.close();
       conv2spect=0;
       }
@@ -239,7 +252,7 @@ int SVWCThread(struct pt* pt){
       w2++;
       if(w2==spec_len-1){
         Serial.println("Something Counting...");
-       static int* SV_input1 = spec;
+       static int8_t* SV_input1 = spec;
       static float SV_output1[dvec_dim];
       SV_call(SV_input1, SV_output1);
       Serial.println("111Called");
@@ -249,7 +262,7 @@ int SVWCThread(struct pt* pt){
       score1 = cos_sim(enroll_dvec, SV_output1);
 
       // 끝에서 SV돌리고 cosine similarity 계산
-      static int* SV_input2 = spec+spec_len-49;
+      static int8_t* SV_input2 = spec+spec_len-49;
       static float SV_output2[dvec_dim];
       SV_call(SV_input2, SV_output2);
       normalize(SV_output2);
@@ -259,7 +272,7 @@ int SVWCThread(struct pt* pt){
       Serial.println(score2);
  
       // 처음과 끝 모두 등록 화자가 아니라면 패스
-      if (score1>thres && score2>thres){
+      if (score1>SV_thres && score2>SV_thres){
       // 스펙트로그램을 91*40으로 쪼개 점수 합산
       for (int i=0; i<spec_len/(91*40); i++) {
         static int WC_output[11];
@@ -407,7 +420,7 @@ void onPDMdata(){
 
 
 
-void SV_call(int* input, float* output){
+void SV_call(int8_t* input, float* output){
   // 모델 인풋 입력
   for (int i=0; i<kFeatureElementCount; i++) {
     SV_model_input->data.int8[i] = input[i]; //feature_buffer[i];
@@ -442,7 +455,7 @@ void SV_call(int* input, float* output){
 
 
 
-void WC_call(int* input, int* output){
+void WC_call(int8_t* input, int* output){
   // 모델 인풋 입력
   for (int i=0; i<spec_len; i++) {
     WC_model_input->data.int8[i] = input[i]; //feature_buffer[i];
@@ -553,4 +566,27 @@ int argmax(int* x, int len){
     }
   }
   return max_idx;
+}
+
+
+void update_enroll_dvec(short* audio, int audio_len){
+  int8_t spec[WC_input_dim];
+  size_t num_samples_read;
+  TfLiteStatus yes_status = GenerateMicroFeatures(
+    error_reporter, audio, audio_len,
+    WC_input_dim, spec, &num_samples_read);
+  
+  float SV_output[dvec_dim];
+  SV_call(spec, SV_output);
+  normalize(SV_output);
+  for (int i=0;i<dvec_dim;i++){
+    enroll_dvec[i] = SV_output[i]; 
+  }
+}
+
+bool is_active(short* audio, int audio_len){
+  unsigned long energy = 0;
+  for(int i=0;i<audio_len;i++){ energy += audio[i]*audio[i];}
+  if(energy>=audio_len*VAD_thres){return true;}
+  else {return false;}
 }

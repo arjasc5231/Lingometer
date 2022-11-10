@@ -13,3 +13,4 @@ constexpr int kFeatureSliceStrideMs = 20;
 constexpr int kFeatureSliceDurationMs = 30;
 
 constexpr int dvec_dim = 25;
+constexpr int WC_input_dim = 40; // 오디오 인풋이 480인 경우 40. but 원래는 91*40
