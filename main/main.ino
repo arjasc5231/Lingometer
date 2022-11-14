@@ -58,6 +58,7 @@ const int chipSelect = 10; //SD카드 핀번호 알려줌.
 
 volatile int tmp_count=0;
 volatile int chk_counted=0;
+volatile bool chk_VAD=0;
 
 const int g_yes_feature_data_slice_size = 40; //만들 스펙토그램 사이즈 91*40?
 int8_t yes_calculated_data[g_yes_feature_data_slice_size]; //만든 스펙토그램 저장 공간
@@ -208,6 +209,8 @@ int spectoThread(struct pt* pt){
   PT_BEGIN(pt);
   for(;;){
     if(conv2spect==1){
+      chk_VAD=is_active(Buffer2, g_yes_30ms_sample_data_size);
+      if(chk_VAD){
       static size_t num_samples_read;
       TfLiteStatus yes_status = GenerateMicroFeatures(
       error_reporter,Buffer2, g_yes_30ms_sample_data_size,
@@ -216,22 +219,22 @@ int spectoThread(struct pt* pt){
       for(int i=0; i<g_yes_feature_data_slice_size; i++){
         spectogramFile.println(yes_calculated_data[i]);
         }
-        //Serial.println("InputSpectogrammmmmmmmmmmmmmmmmmmmmmmmm,,");
+        Serial.println("InputSpectogrammmmmmmmmmmmmmmmmmmmmmmmm,,");
 
-
+/*
       // update_enroll_dvec test
       update_enroll_dvec(Buffer2, g_yes_30ms_sample_data_size);
       for(int i=0; i<dvec_dim; i++){ Serial.print(enroll_dvec[i]); }
       Serial.println("");
       
       // is_active test
-      Serial.println(is_active(Buffer2, g_yes_30ms_sample_data_size));
+      Serial.println();
       
-      
+      */
       
       spectogramFile.close();
       conv2spect=0;
-      }
+      }}
           PT_YIELD(pt);
       }
     PT_END(pt);
