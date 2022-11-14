@@ -570,11 +570,11 @@ int argmax(int* x, int len){
 
 
 void update_enroll_dvec(short* audio, int audio_len){
-  int8_t spec[WC_input_dim];
+  int8_t spec[kFeatureElementCount];
   size_t num_samples_read;
   TfLiteStatus yes_status = GenerateMicroFeatures(
     error_reporter, audio, audio_len,
-    WC_input_dim, spec, &num_samples_read);
+    kFeatureElementCount, spec, &num_samples_read);
   
   float SV_output[dvec_dim];
   SV_call(spec, SV_output);
