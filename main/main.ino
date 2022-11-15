@@ -50,6 +50,7 @@ volatile int w=0; //Buffer2 관리용
 volatile int Read; //음성 신호 입력용 변수
 volatile int conv2spect=0; //스펙토그램 변환 확인용 변수
 File spectogramFile; //이 파일에 스펙토그램 넣을 예정임.
+File enrollFile; //이 파일에 화자 목소리 저장 예정임.
 
 volatile int startSVWC=0; //단어수 카운트 시작 여부 알려줌.
 volatile int w2=0; //단어수 카운트 관리용
@@ -63,7 +64,7 @@ volatile bool chk_VAD=0;
 
 const int g_yes_feature_data_slice_size = 91*40; //만들 스펙토그램 사이즈 91*40?
 int8_t yes_calculated_data[g_yes_feature_data_slice_size]; //만든 스펙토그램 저장 공간
- const int g_yes_30ms_sample_data_size = 29280; //인풋 오디오 데이터 사이즈, 29280?
+const int g_yes_30ms_sample_data_size = 29280; //인풋 오디오 데이터 사이즈, 29280?
 /////////이 아래로 SVWC 전역변수//////////
 // 에러 리포터 전역변수 선언
 tflite::ErrorReporter* error_reporter = nullptr;
@@ -199,7 +200,7 @@ int button2TimeThread(struct pt* pt){
           update_enroll_dvec(Buffer3, 16000);
           for(int i=0; i<dvec_dim; i++){ Serial.print(enroll_dvec[i]); }
           Serial.println("");
-          PT_SLEEP(pt,100);
+          PT_SLEEP(pt,1000);
           mode=0; //다했으면 일시정지 상태로 만들기
           }
       PT_YIELD(pt);
@@ -218,8 +219,9 @@ int recordingThread(struct pt* pt){
           Buffer2[w]=Buffer[i];
           w++;
           }
+          Read=0;
         }
-        if(w>=29279){ //Buffer2 꽉차면
+        if(w>=29999){ //Buffer2 꽉차면
         conv2spect=1;
         w=0; //스펙토그램 전환하라는 신호
         }
@@ -251,6 +253,7 @@ int spectoThread(struct pt* pt){
       spectogramFile=SD.open("Specto.txt", FILE_WRITE);
       for(int i=0; i<g_yes_feature_data_slice_size; i++){
         spectogramFile.println(yes_calculated_data[i]);
+        Serial.println(yes_calculated_data[i]);
         }
         Serial.println("InputSpectogrammmmmmmmmmmmmmmmmmmmmmmmm,,");
 
@@ -294,7 +297,7 @@ int SVWCThread(struct pt* pt){
       Serial.println("111Called");
       normalize(SV_output1);
       Serial.println("normalized output");
-      for(int i=0;i<dvec_dim;i++){Serial.println(SV_output1[i]);}
+      //for(int i=0;i<dvec_dim;i++){Serial.println(SV_output1[i]);}
       score1 = cos_sim(enroll_dvec, SV_output1);
 
       // 끝에서 SV돌리고 cosine similarity 계산
@@ -374,7 +377,6 @@ void setup() {
     PT_INIT(&ptButton1Time); //PT들 시작
     PT_INIT(&ptButton2Time);
     PT_INIT(&ptState);
-    //PT_INIT(&ptCountWords);
     PT_INIT(&ptDisplayNum);
     PT_INIT(&ptRecording);
     PT_INIT(&ptSpecto);
@@ -413,7 +415,6 @@ void loop() {
   PT_SCHEDULE(button1TimeThread(&ptButton1Time));
   PT_SCHEDULE(button2TimeThread(&ptButton2Time));
   PT_SCHEDULE(stateThread(&ptState));
-//  PT_SCHEDULE(countWordsThread(&ptCountWords));
   PT_SCHEDULE(displayNumThread(&ptDisplayNum));
   PT_SCHEDULE(recordingThread(&ptRecording));
   PT_SCHEDULE(spectoThread(&ptSpecto));
@@ -602,6 +603,3 @@ bool is_active(short* audio, int audio_len){
   if(energy>=audio_len*VAD_thres){return true;}
   else {return false;}
 }
-
-void learningMode(){
-  }
