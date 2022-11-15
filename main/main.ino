@@ -44,7 +44,8 @@ volatile unsigned long now=1;
 
 volatile unsigned int num_words=100; // 측정된 단어 수
 short Buffer[256]; // 음성 신호 입력받을 변수
-short Buffer2[512]; //음성 신호 임시 저장용 변수
+short Buffer2[30000]; //음성 신호 임시 저장용 변수
+short Buffer3[16000]; // enroll_dvec업데이트용
 volatile int w=0; //Buffer2 관리용
 volatile int Read; //음성 신호 입력용 변수
 volatile int conv2spect=0; //스펙토그램 변환 확인용 변수
@@ -60,9 +61,9 @@ volatile int tmp_count=0;
 volatile int chk_counted=0;
 volatile bool chk_VAD=0;
 
-const int g_yes_feature_data_slice_size = 40; //만들 스펙토그램 사이즈 91*40?
+const int g_yes_feature_data_slice_size = 91*40; //만들 스펙토그램 사이즈 91*40?
 int8_t yes_calculated_data[g_yes_feature_data_slice_size]; //만든 스펙토그램 저장 공간
- const int g_yes_30ms_sample_data_size = 480; //인풋 오디오 데이터 사이즈, 29280?
+ const int g_yes_30ms_sample_data_size = 29280; //인풋 오디오 데이터 사이즈, 29280?
 /////////이 아래로 SVWC 전역변수//////////
 // 에러 리포터 전역변수 선언
 tflite::ErrorReporter* error_reporter = nullptr;
@@ -138,7 +139,7 @@ int button1TimeThread(struct pt* pt){
       
       if(b1_out_time-b1_in_time<2000){
         if(mode==0){mode=1;}
-        else if(mode=1){mode=0;} //짧게 누르면 측정 일시정지/ 재개하고
+        else if(mode==1){mode=0;} //짧게 누르면 측정 일시정지/ 재개하고
         } else {num_words=0; SD.remove("Specto.txt");} //길게 누르면 측정 초기화한다.
       PT_YIELD(pt);
     }
@@ -152,7 +153,7 @@ int button2TimeThread(struct pt* pt){
 
   for(;;){
       PT_YIELD(pt);
-      
+      if(mode==1 ||mode==0){ //모드가 1이나 0일때에는 화면 on, off / mode 2 변환용
       PT_WAIT_UNTIL(pt, button2_chk==0);
       b2_in_time=millis();
       last_control=millis();
@@ -169,16 +170,40 @@ int button2TimeThread(struct pt* pt){
         light=1;
         startSVWC=1; //불이 켜지면 SVWC 시작
         }
-        else if(light==1){light=0;}
+        else if(light==1){light=0;}}
          //짧게 누르면 불이 켜지거나 꺼지고
         else{
           mode=2;
           light=1;;
-          } //길게 누르면 불이 무조건 켜지면서 모드 2
-      PT_YIELD(pt);     
-      
+          } //길게 누르면 불이 무조건 켜지면서 러닝 모드. 이후엔 다시 모드 0이나 1 상태로.
+        }
+        else{ //모드 2에 들어오면 학습하기
+          PT_WAIT_UNTIL(pt, button2_chk==0);
+          b2_in_time=millis();
+          last_control=millis();
+          PT_YIELD(pt);
+          Serial.println("button2inin2222222");
+          for(int i=0; i<16000;i++){
+            Buffer3[i]=0;
+            Buffer2[i+8000]=0;
+            }
+          w=0;//버퍼2 들어갈 변수도 초기화
+          
+          PT_WAIT_UNTIL(pt,button2_chk==1);
+          b2_out_time=millis();
+          last_control=millis();
+          Serial.println("button2outoutout2222222");
+          for(int i=0;i<16000;i++){
+            Buffer3[i]=Buffer2[i+8000];
+            }
+          update_enroll_dvec(Buffer3, 16000);
+          for(int i=0; i<dvec_dim; i++){ Serial.print(enroll_dvec[i]); }
+          Serial.println("");
+          PT_SLEEP(pt,100);
+          mode=0; //다했으면 일시정지 상태로 만들기
+          }
+      PT_YIELD(pt);
     }
-  }
   PT_END(pt);
 }
 
@@ -187,16 +212,24 @@ pt ptRecording;
 int recordingThread(struct pt* pt){
   PT_BEGIN(pt);
   for(;;){
-    if(mode==1 && startSVWC==0){
+    if(mode==1 && startSVWC==0){ //측정중이고, 카운팅 계산중은 아닐때
       if(Read){
         for(int i=0; i<Read; i++){
           Buffer2[w]=Buffer[i];
           w++;
           }
         }
-        if(w>=479){ //Buffer2 꽉차면
+        if(w>=29279){ //Buffer2 꽉차면
         conv2spect=1;
         w=0; //스펙토그램 전환하라는 신호
+        }
+        }
+      else if(mode==2){ //학습용 음성 저장
+        if(Read){
+        for(int i=0; i<Read; i++){
+          Buffer2[w]=Buffer[i];
+          if(w<=29999){w++;}; //초기화는 이미 했고, 버퍼를 0부터 채워나가되, w가 지나치게 커지지 못하게 변수관리
+          }
         }
         }
       PT_YIELD(pt);
@@ -304,29 +337,6 @@ int SVWCThread(struct pt* pt){
   PT_END(pt);
   }
 
-/* 이거 사실 필요없을지도
-pt ptCountWords; //모드1에서 단어수 세는용도 pt
-int countWordsThread(struct pt* pt){
-  PT_BEGIN(pt);
-  for(;;){
-    if(mode==1){
-      if(w3=1){
-      num_words=num_words+total_words;
-      total_words=0;
-      }
-      //밑은 테스트용. 나중에 한번에 몰아서 하는 식으로 하면 비슷하게 되긴 할 듯?
-      /*if(chk_counted==1){
-      num_words=num_words+tmp_count;
-      chk_counted=0;
-      }
-      }
-    PT_YIELD(pt);
-  }
-  PT_END(pt);
-  }
-  */
-
-
 pt ptDisplayNum; //모드에 맞는 디스플레이용 pt
 int displayNumThread(struct pt* pt){
   PT_BEGIN(pt);
@@ -336,8 +346,7 @@ int displayNumThread(struct pt* pt){
     if(mode==1){onRecording(num_words);}
     else if(mode==0){onStop(num_words);} //모드 1, 0일때 해당하는 화면 디스플레이
     else{
-      LearningVoice();
-      mode=1;
+      forLearning("Hello, Hello World");
       }} // 모드 2일때 학습화면 디스플레이 및, 학습해주는 함수 호출
       else if(light==0){lightOff();} // 불 안들어와있으면 꺼줌.
       
@@ -593,3 +602,6 @@ bool is_active(short* audio, int audio_len){
   if(energy>=audio_len*VAD_thres){return true;}
   else {return false;}
 }
+
+void learningMode(){
+  }
