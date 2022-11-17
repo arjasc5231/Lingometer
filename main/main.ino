@@ -44,7 +44,8 @@ volatile unsigned long now=1;
 
 volatile unsigned int num_words=0; // 측정된 단어 수
 short Buffer[256]; // 음성 신호 입력받을 변수
-short Buffer2[30000]; //음성 신호 임시 저장용 변수
+const int buffer2_dim=512*60
+short Buffer2[buffer2_dim]; //음성 신호 임시 저장용 변수
 short Buffer3[16000]; // enroll_dvec업데이트용
 volatile int w=0; //Buffer2 관리용
 volatile int Read; //음성 신호 입력용 변수
@@ -266,9 +267,6 @@ int spectoThread(struct pt* pt){
         //Serial.println(yes_calculated_data[i]);
 
         }
-        //Serial.println("InputSpectogrammmmmmmmmmmmmmmmmmmmmmmmm,,");
-
-      
       spectogramFile.close();
       conv2spect=0;
       }}
