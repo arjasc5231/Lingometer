@@ -31,6 +31,21 @@ void onRecording(int num){
   display.display();
   }
 
+  void onCounting(int num){
+  display.clearDisplay();
+  //숫자 디스플레이
+  display.setTextSize(2);
+  display.setTextColor(WHITE);
+  display.setCursor(80,10);
+  display.println(num);
+
+  display.setTextSize(1);
+  display.setCursor(5,5);
+  display.println("Counting");
+  
+  display.display();
+  }
+
 //학습 모드일 때, 문장 출력하도록
   void forLearning(String a){
     display.clearDisplay();

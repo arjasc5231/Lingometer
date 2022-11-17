@@ -42,7 +42,7 @@ volatile unsigned long b2_out_time=1;
 volatile unsigned long last_control=1;
 volatile unsigned long now=1;
 
-volatile unsigned int num_words=100; // 측정된 단어 수
+volatile unsigned int num_words=0; // 측정된 단어 수
 short Buffer[256]; // 음성 신호 입력받을 변수
 short Buffer2[30000]; //음성 신호 임시 저장용 변수
 short Buffer3[16000]; // enroll_dvec업데이트용
@@ -51,6 +51,7 @@ volatile int Read; //음성 신호 입력용 변수
 volatile int conv2spect=0; //스펙토그램 변환 확인용 변수
 File spectogramFile; //이 파일에 스펙토그램 넣을 예정임.
 File enrollFile; //이 파일에 화자 목소리 저장 예정임.
+File numFile; //이 파일에 단어 수 저장.
 
 volatile int startSVWC=0; //단어수 카운트 시작 여부 알려줌.
 volatile int w2=0; //단어수 카운트 관리용
@@ -64,7 +65,7 @@ volatile bool chk_VAD=0;
 
 const int g_yes_feature_data_slice_size = 91*40; //만들 스펙토그램 사이즈 91*40?
 int8_t yes_calculated_data[g_yes_feature_data_slice_size]; //만든 스펙토그램 저장 공간
-const int g_yes_30ms_sample_data_size = 29280; //인풋 오디오 데이터 사이즈, 29280?
+const int g_yes_30ms_sample_data_size = 29515; //인풋 오디오 데이터 사이즈, 29515?
 /////////이 아래로 SVWC 전역변수//////////
 // 에러 리포터 전역변수 선언
 tflite::ErrorReporter* error_reporter = nullptr;
@@ -227,7 +228,7 @@ int recordingThread(struct pt* pt){
           }
           Read=0;
         }
-        if(w>=29999){ //Buffer2 꽉차면
+        if(w>=29515){ //Buffer2 꽉차면
         conv2spect=1;
         w=0; //스펙토그램 전환하라는 신호
         }
@@ -254,28 +255,17 @@ int spectoThread(struct pt* pt){
       if(chk_VAD){
       static size_t num_samples_read;
       Serial.println("Hereis Buffer22222222222");
-      for(int i=0;i<=15000;i++){Serial.println(Buffer2[i]);}
       TfLiteStatus yes_status = GenerateMicroFeatures(
       error_reporter,Buffer2, g_yes_30ms_sample_data_size,
       g_yes_feature_data_slice_size, yes_calculated_data, &num_samples_read);
       spectogramFile=SD.open("Specto.txt", FILE_WRITE);
       Serial.println("Here is Spectoooooooooooooooooooo");
       for(int i=0; i<g_yes_feature_data_slice_size; i++){
-        spectogramFile.println(yes_calculated_data[i]);
         Serial.println(yes_calculated_data[i]);
+        spectogramFile.println(yes_calculated_data[i]);
         }
         Serial.println("InputSpectogrammmmmmmmmmmmmmmmmmmmmmmmm,,");
 
-/*
-      // update_enroll_dvec test
-      update_enroll_dvec(Buffer2, g_yes_30ms_sample_data_size);
-      for(int i=0; i<dvec_dim; i++){ Serial.print(enroll_dvec[i]); }
-      Serial.println("");
-      
-      // is_active test
-      Serial.println();
-      
-      */
       
       spectogramFile.close();
       conv2spect=0;
@@ -340,6 +330,11 @@ int SVWCThread(struct pt* pt){
       w3=0;
       startSVWC=0;
       spectogramFile.close();
+      /*
+      numFile=SD.open("numWords.txt");
+      numFile.println(num_words);
+      numFile.close();
+      */
       Serial.println("SVWC end, remove file...");
       SD.remove("Specto.txt");
       Serial.println("Removed Specto.txt");
@@ -355,8 +350,14 @@ int displayNumThread(struct pt* pt){
   for(;;){
     PT_YIELD(pt);
     if(light==1){ //일단 불이 들어와있으면
-    if(mode==1){onRecording(num_words);}
-    else if(mode==0){onStop(num_words);} //모드 1, 0일때 해당하는 화면 디스플레이
+    if(mode==1){
+      if(startSVWC==0){onRecording(num_words);}
+      else{onCounting(num_words);}
+      }
+    else if(mode==0){
+      if(startSVWC==0){onStop(num_words);}
+      else{onCounting(num_words);}
+      } //모드 1, 0일때 해당하는 화면 디스플레이
     else{
       forLearning("Press Button, and Say Something...");
       }} // 모드 2일때 학습화면 디스플레이 및, 학습해주는 함수 호출
