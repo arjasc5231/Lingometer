@@ -19,7 +19,7 @@
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
-#include "micro_features_micro_features_generator.h" //이거랑 아래거는 스펙토그램용
+#include "feature_provider.h" //이거랑 아래거는 스펙토그램용
 #include "tensorflow/lite/micro/micro_error_reporter.h" 
 
 
@@ -68,6 +68,9 @@ const int g_yes_30ms_sample_data_size = 29280; //인풋 오디오 데이터 사�
 /////////이 아래로 SVWC 전역변수//////////
 // 에러 리포터 전역변수 선언
 tflite::ErrorReporter* error_reporter = nullptr;
+
+// feature provider
+FeatureProvider* feature_provider = nullptr;
 
 float total_words=0; // 총 단어 수
 float enroll_dvec[dvec_dim]; // 화자 등록 d-vector (normalized)
@@ -253,18 +256,19 @@ int spectoThread(struct pt* pt){
       chk_VAD=is_active(Buffer2, g_yes_30ms_sample_data_size);
       if(chk_VAD){
       static size_t num_samples_read;
+      
       Serial.println("Hereis Buffer22222222222");
       for(int i=0;i<=15000;i++){Serial.println(Buffer2[i]);}
-      TfLiteStatus yes_status = GenerateMicroFeatures(
-      error_reporter,Buffer2, g_yes_30ms_sample_data_size,
-      g_yes_feature_data_slice_size, yes_calculated_data, &num_samples_read);
+      int stat = feature_provider->PopulateFeatureData(error_reporter, Buffer2, g_yes_30ms_sample_data_size, yes_calculated_data);
+      Serial.print("stat "); Serial.println(stat);
+      
       spectogramFile=SD.open("Specto.txt", FILE_WRITE);
       Serial.println("Here is Spectoooooooooooooooooooo");
       for(int i=0; i<g_yes_feature_data_slice_size; i++){
         spectogramFile.println(yes_calculated_data[i]);
-        Serial.println(yes_calculated_data[i]);
+        //Serial.println(yes_calculated_data[i]);
         }
-        Serial.println("InputSpectogrammmmmmmmmmmmmmmmmmmmmmmmm,,");
+        //Serial.println("InputSpectogrammmmmmmmmmmmmmmmmmmmmmmmm,,");
 
 /*
       // update_enroll_dvec test
@@ -409,7 +413,6 @@ void setup() {
     // 에러 리포터 빌드
   static tflite::MicroErrorReporter micro_error_reporter;
   error_reporter = &micro_error_reporter;
-  InitializeMicroFeatures(error_reporter);
 
   // enroll_dvec 임의로 설정
   if(SD.exists("enroll.txt")){
@@ -603,9 +606,7 @@ int argmax(int* x, int len){
 void update_enroll_dvec(short* audio, int audio_len){
   int8_t spec[kFeatureElementCount];
   size_t num_samples_read;
-  TfLiteStatus yes_status = GenerateMicroFeatures(
-    error_reporter, audio, audio_len,
-    kFeatureElementCount, spec, &num_samples_read);
+  feature_provider->PopulateFeatureData(error_reporter, audio, audio_len, spec);
   
   float SV_output[dvec_dim];
   SV_call(spec, SV_output);
