@@ -256,18 +256,6 @@ int spectoThread(struct pt* pt){
     if(conv2spect==1){
       chk_VAD=is_active(Buffer2, g_yes_30ms_sample_data_size);
       if(chk_VAD){
-      static size_t num_samples_read;
-      Serial.println("Hereis Buffer22222222222");
-      TfLiteStatus yes_status = GenerateMicroFeatures(
-      error_reporter,Buffer2, g_yes_30ms_sample_data_size,
-      g_yes_feature_data_slice_size, yes_calculated_data, &num_samples_read);
-      spectogramFile=SD.open("Specto.txt", FILE_WRITE);
-      Serial.println("Here is Spectoooooooooooooooooooo");
-      for(int i=0; i<g_yes_feature_data_slice_size; i++){
-        Serial.println(yes_calculated_data[i]);
-        spectogramFile.println(yes_calculated_data[i]);
-=======
-      for(int i=0;i<=15000;i++){Serial.println(Buffer2[i]);}
       int stat = feature_provider->PopulateFeatureData(error_reporter, Buffer2, g_yes_30ms_sample_data_size, yes_calculated_data);
       Serial.print("stat "); Serial.println(stat);
       
@@ -276,7 +264,7 @@ int spectoThread(struct pt* pt){
       for(int i=0; i<g_yes_feature_data_slice_size; i++){
         spectogramFile.println(yes_calculated_data[i]);
         //Serial.println(yes_calculated_data[i]);
->>>>>>> arduino
+
         }
         //Serial.println("InputSpectogrammmmmmmmmmmmmmmmmmmmmmmmm,,");
 
