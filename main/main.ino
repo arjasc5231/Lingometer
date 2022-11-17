@@ -198,7 +198,13 @@ int button2TimeThread(struct pt* pt){
             Buffer3[i]=Buffer2[i+8000];
             }
           update_enroll_dvec(Buffer3, 16000);
-          for(int i=0; i<dvec_dim; i++){ Serial.print(enroll_dvec[i]); }
+          if(SD.exists("enroll.txt")){SD.remove("enroll.txt");}
+          enrollFile=SD.open("enroll.txt", FILE_WRITE);
+          for(int i=0; i<dvec_dim; i++){ 
+            Serial.print(enroll_dvec[i]); 
+            enrollFile.println(enroll_dvec[i]);
+            }
+            enrollFile.close();
           Serial.println("");
           PT_SLEEP(pt,1000);
           mode=0; //다했으면 일시정지 상태로 만들기
@@ -247,10 +253,13 @@ int spectoThread(struct pt* pt){
       chk_VAD=is_active(Buffer2, g_yes_30ms_sample_data_size);
       if(chk_VAD){
       static size_t num_samples_read;
+      Serial.println("Hereis Buffer22222222222");
+      for(int i=0;i<=15000;i++){Serial.println(Buffer2[i]);}
       TfLiteStatus yes_status = GenerateMicroFeatures(
       error_reporter,Buffer2, g_yes_30ms_sample_data_size,
       g_yes_feature_data_slice_size, yes_calculated_data, &num_samples_read);
       spectogramFile=SD.open("Specto.txt", FILE_WRITE);
+      Serial.println("Here is Spectoooooooooooooooooooo");
       for(int i=0; i<g_yes_feature_data_slice_size; i++){
         spectogramFile.println(yes_calculated_data[i]);
         Serial.println(yes_calculated_data[i]);
@@ -349,7 +358,7 @@ int displayNumThread(struct pt* pt){
     if(mode==1){onRecording(num_words);}
     else if(mode==0){onStop(num_words);} //모드 1, 0일때 해당하는 화면 디스플레이
     else{
-      forLearning("Hello, Hello World");
+      forLearning("Press Button, and Say Something...");
       }} // 모드 2일때 학습화면 디스플레이 및, 학습해주는 함수 호출
       else if(light==0){lightOff();} // 불 안들어와있으면 꺼줌.
       
@@ -403,8 +412,17 @@ void setup() {
   InitializeMicroFeatures(error_reporter);
 
   // enroll_dvec 임의로 설정
-  for (int i=0;i<dvec_dim;i++){ enroll_dvec[i]=1/dvec_dim; }
+  if(SD.exists("enroll.txt")){
+    enrollFile=SD.open("enroll.txt",FILE_READ);
+    for(int i=0;i<=dvec_dim;i++){
+      enroll_dvec[i]=enrollFile.read();
+      }
+      enrollFile.close();
+    }
+    else{
+      for (int i=0;i<dvec_dim;i++){ enroll_dvec[i]=1/dvec_dim; }
   for (int i=0;i<10;i++){enroll_dvec[i]=1;}
+      }
   normalize(enroll_dvec);
 
   SV_setup();
