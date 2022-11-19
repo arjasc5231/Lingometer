@@ -427,7 +427,7 @@ void setup() {
   // enroll_dvec 임의로 설정. 파일이 있다면 학습된걸로 설정
   if(SD.exists("enroll.txt")){
     enrollFile=SD.open("enroll.txt",FILE_READ);
-    for(int i=0;i<=dvec_dim;i++){
+    for(int i=0;i<dvec_dim;i++){
       enroll_dvec[i]=enrollFile.read();
       }
       enrollFile.close();
