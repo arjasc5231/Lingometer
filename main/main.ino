@@ -44,7 +44,7 @@ volatile unsigned long now=1;
 
 volatile unsigned int num_words=0; // 측정된 단어 수
 short Buffer[256]; // 음성 신호 입력받을 변수
-const int buffer2_dim=512*60
+const int buffer2_dim=512*60;
 short Buffer2[buffer2_dim]; //음성 신호 임시 저장용 변수
 short Buffer3[16000]; // enroll_dvec업데이트용
 volatile int w=0; //Buffer2 관리용
@@ -146,7 +146,11 @@ int button1TimeThread(struct pt* pt){
       if(b1_out_time-b1_in_time<2000){
         if(mode==0){mode=1;}
         else if(mode==1){mode=0;} //짧게 누르면 측정 일시정지/ 재개하고
-        } else {num_words=0; SD.remove("Specto.txt");} //길게 누르면 측정 초기화한다.
+        } else {
+          num_words=0; 
+          SD.remove("Specto.txt");
+          if(SD.exists("numW.txt")){SD.remove("numW.txt");}
+          } //길게 누르면 측정 초기화한다.
       PT_YIELD(pt);
     }
   PT_END(pt);
@@ -330,11 +334,12 @@ int SVWCThread(struct pt* pt){
       w3=0;
       startSVWC=0;
       spectogramFile.close();
-      /*
-      numFile=SD.open("numWords.txt");
+
+      if(SD.exists("numW.txt")){SD.remove("numW.txt");}
+      numFile=SD.open("numW.txt", FILE_WRITE);
       numFile.println(num_words);
       numFile.close();
-      */
+      
       Serial.println("SVWC end, remove file...");
       SD.remove("Specto.txt");
       Serial.println("Removed Specto.txt");
@@ -410,8 +415,16 @@ void setup() {
     // 에러 리포터 빌드
   static tflite::MicroErrorReporter micro_error_reporter;
   error_reporter = &micro_error_reporter;
+   if(SD.exists("numW.txt")){
+    numFile=SD.open("numW.txt");
+    num_words=numFile.read();
+    Serial.println("Openned");
+    Serial.println(num_words);
+    numFile.close();
+    
+    }
 
-  // enroll_dvec 임의로 설정
+  // enroll_dvec 임의로 설정. 파일이 있다면 학습된걸로 설정
   if(SD.exists("enroll.txt")){
     enrollFile=SD.open("enroll.txt",FILE_READ);
     for(int i=0;i<=dvec_dim;i++){
