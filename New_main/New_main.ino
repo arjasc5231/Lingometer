@@ -3,6 +3,8 @@
 #include <SPI.h> //SD카드 라이브러리
 #include <SD.h> //SD카드 라이브러리
 
+#include "Const.h" //기본 상수값 필요한 게 생기면 여기에.
+#include "OLED.h" //OLED 출력 조작 관련 함수
 
 // 텐서플로우 내장함수
 #include <TensorFlowLite.h>
@@ -212,7 +214,6 @@ int spectoThread(struct pt* pt){
         spectogramFile.println(spec[i]);
         }
       spectogramFile.close();
-      SVWC=1;
       }}
       Buffer_idx=0;
       }
@@ -246,6 +247,29 @@ int SVWCThread(struct pt* pt){
   PT_END(pt);
   }
 
+pt ptDisplay; //모드에 맞는 디스플레이용 pt
+int displayThread(struct pt* pt){
+  PT_BEGIN(pt);
+  for(;;){
+    PT_YIELD(pt);
+    if(light==1){ //일단 불이 들어와있으면
+    if(SVWC==0){
+    if(mode==1){onRecording(total_words);}
+    else if(mode==0){onStop(total_words);}
+    else {forLearning("Press Button, and Say Something...");}//모드 0,1,2일때 해당하는 화면 디스플레이
+      } else{onCounting(total_words);} //측정 중이면 Counting.
+      } else{lightOff();} // 불 안들어와있으면 꺼줌.
+      
+      if(millis()-last_control>100000){ //마지막 조작에서 10초 이상 지나면 -> 일단 100초로 해둠.
+        light=0;
+        lightOff(); //불 끄고
+        PT_YIELD(pt);
+        PT_WAIT_UNTIL(pt,light==1); //다시 조작할때까지(불켜질 때까지) 기다림.
+        }
+      PT_YIELD(pt);
+  }
+  PT_END(pt);
+  }
 
 
 
@@ -268,6 +292,12 @@ void setup() {
 
   // enroll_dvec 임의로 설정
   for (int i=0;i<10;i++){ enroll_dvec[i]=1; }
+  if(SD.exists("enroll.txt")){ //기존 학습 결과 있으면 불러옴.
+    enrollFile=SD.open("enroll.txt");
+    for (int i=0;i<dvec_dim;i++){enroll_dvec[i]=enrollFile.read();}
+    enrollFile.close();
+    }
+  
   SV_setup();
   WC_setup();
 
@@ -283,28 +313,13 @@ void setup() {
   }
 
 
-  /*
-  // 화자 등록
-  if (mode==0 || mode==2){
-    start_time = millis();
-    while (millis()-start_time<30*1000){
-      if (Buffer_idx < Buffer_len) {
-        update_enroll_dvec(Buffer,16000);
-        Buffer_idx=0;
-      }
-    }
-  }
-  
-  Serial.print("enrolled vector: ");
-  for (int i=0; i<dvec_dim; i++){ Serial.print(enroll_dvec[i]); Serial.print(" ");}
-  Serial.println();*/
-
   // PT 세팅
   PT_INIT(&ptState);
   PT_INIT(&ptSpecto);
   PT_INIT(&ptSVWC);
   PT_INIT(&ptButton1Time);
   PT_INIT(&ptButton2Time);
+  PT_INIT(&ptDisplay);
   
 }
 
@@ -314,6 +329,7 @@ void loop() {
   PT_SCHEDULE(SVWCThread(&ptSVWC));
   PT_SCHEDULE(button1TimeThread(&ptButton1Time));
   PT_SCHEDULE(button2TimeThread(&ptButton2Time));
+  PT_SCHEDULE(displayThread(&ptDisplay));
 }
 
 
