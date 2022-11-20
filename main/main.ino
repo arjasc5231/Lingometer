@@ -44,7 +44,7 @@ volatile unsigned long now=1;
 
 volatile unsigned int num_words=0; // 측정된 단어 수
 short Buffer[256]; // 음성 신호 입력받을 변수
-const int buffer2_dim=512*60; //512*60?
+const int buffer2_dim=200*60; //512*60?
 short Buffer2[buffer2_dim]; //음성 신호 임시 저장용 변수
 volatile int w=0; //Buffer2 관리용
 volatile int Read; //음성 신호 입력용 변수
@@ -63,7 +63,7 @@ volatile int tmp_count=0;
 volatile int chk_counted=0;
 volatile bool chk_VAD=0;
 
-const int audio_input = 29515; //인풋 오디오 데이터 사이즈, 29515?
+const int audio_input = 10000; //인풋 오디오 데이터 사이즈, 29515?
 /////////이 아래로 SVWC 전역변수//////////
 // 에러 리포터 전역변수 선언
 tflite::ErrorReporter* error_reporter = nullptr;
@@ -140,7 +140,7 @@ int button1TimeThread(struct pt* pt){
         } else {
           num_words=0; 
           SD.remove("Specto.txt");
-          if(SD.exists("numW.txt")){SD.remove("numW.txt");}
+          SD.remove("numW.txt");
           } //길게 누르면 측정 초기화한다.
       PT_YIELD(pt);
     }
