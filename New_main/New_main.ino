@@ -69,6 +69,7 @@ unsigned int Buffer_idx=0;
 
 // mode=0: stop Recording,  mode=1: Recording,  mode2: Learning Voice
 int mode = 1;
+int light=1;
 int SVWC = 0;
 bool is_enroll=true;
 bool chk_VAD=true;
@@ -81,6 +82,12 @@ File numFile; //이 파일에 단어 수 저장.
 //조작
 volatile int button1_chk=1; //버튼1 조작용 변수, 눌리면 0, 아니면 1
 volatile int button2_chk=1; //버튼2 조작용 변수, 눌리면 0, 아니면 1
+volatile unsigned long b1_in_time=1;
+volatile unsigned long b1_out_time=1;
+volatile unsigned long b2_in_time=1;
+volatile unsigned long b2_out_time=1;
+volatile unsigned long last_control=1;
+volatile unsigned long now=1;
 
 ///////////////////////////////////////////////////////////////
 /////////////////////////PT////////////////////////////////////
@@ -96,11 +103,107 @@ int stateThread(struct pt* pt){
     PT_END(pt);
   }
 
+pt ptButton1Time; // 버튼1 프레스 시간 확인 및 조작용 PT
+int button1TimeThread(struct pt* pt){
+  PT_BEGIN(pt);
+  for(;;){
+      PT_YIELD(pt);
+      
+      PT_WAIT_UNTIL(pt, button1_chk==0);
+      b1_in_time=millis();
+      last_control=millis();
+      PT_YIELD(pt);
+      
+      PT_WAIT_UNTIL(pt,button1_chk==1);
+      b1_out_time=millis();
+      last_control=millis();
+      light=1;
+      
+      if(b1_out_time-b1_in_time<2000){
+        if(mode==0){mode=1; Serial.println("now mode 1");}
+        else if(mode==1){mode=0; Serial.println("now mode 0");} //짧게 누르면 측정 일시정지/ 재개하고
+        } else {
+          total_words=0; 
+          SD.remove("Specto.txt");
+          SD.remove("numW.txt");
+          Serial.println("Reset TNW");
+          } //길게 누르면 측정 초기화한다.
+      PT_YIELD(pt);
+    }
+  PT_END(pt);
+  }
+
+pt ptButton2Time; // 버튼2 프레스 시간 확인 및 조작용 PT
+int button2TimeThread(struct pt* pt){
+  PT_BEGIN(pt);
+
+  for(;;){
+      PT_YIELD(pt);
+      
+      if(mode==1 ||mode==0){ //모드가 1이나 0일때에는 화면 on, off / mode 2 변환용 + mode 2 관리/enrollvec 업뎃
+      PT_WAIT_UNTIL(pt, button2_chk==0);
+      b2_in_time=millis();
+      last_control=millis();
+      PT_YIELD(pt);
+      
+      PT_WAIT_UNTIL(pt,button2_chk==1);
+      b2_out_time=millis();
+      last_control=millis();
+      
+      if(b2_out_time-b2_in_time<2000){
+        if(light==0){
+        light=1;
+        SVWC=1; //불이 켜지면 SVWC 시작
+        Serial.println("Start SVWC");
+        }
+        else if(light==1){light=0;}}
+         //짧게 누르면 불이 켜지거나 꺼지고
+        else{
+          mode=2;
+          Serial.println("Start Voice Learning");
+          light=1;;
+          } //길게 누르면 불이 무조건 켜지면서 러닝 모드. 이후엔 다시 모드 0이나 1 상태로.
+        }
+        else{ //모드 2에 들어오면 학습하기
+          PT_WAIT_UNTIL(pt, button2_chk==0);
+          b2_in_time=millis();
+          last_control=millis();
+          Serial.println("Start mode 2 Recording");
+          for(int i=0; i<20000;i++){ //Buffer 비워주고
+            Buffer[i+7000]=0;
+            }
+          Buffer_idx=0;
+          PT_YIELD(pt);
+          
+          PT_WAIT_UNTIL(pt,button2_chk==1);
+          b2_out_time=millis();
+          last_control=millis();
+          Serial.println("mode 2 recording Finished");
+          update_enroll_dvec(Buffer+8000,16000);
+          Serial.println("enroll_dvec Updated"); //enroll_dvec 초기화
+          
+          SD.remove("enroll.txt");
+          enrollFile=SD.open("enroll.txt", FILE_WRITE); //enroll_dvec 저장
+          for(int i=0; i<dvec_dim; i++){ 
+            Serial.print(enroll_dvec[i]); 
+            enrollFile.println(enroll_dvec[i]);
+            }
+            enrollFile.close();
+          Buffer_idx=0;
+          mode=0; //학습 다했으면 일시정지 상태로 만들기
+          }
+      PT_YIELD(pt);
+    }
+  PT_END(pt);
+}
+
+
 pt ptSpecto;
 int spectoThread(struct pt* pt){
   PT_BEGIN(pt);
   for(;;){
     if (Buffer_idx >= Buffer_len){
+      if(mode==1){
       chk_VAD=is_active(Buffer, audio_input);
       if(chk_VAD){
       feature_provider->PopulateFeatureData(error_reporter, Buffer, audio_input, spec);
@@ -110,7 +213,7 @@ int spectoThread(struct pt* pt){
         }
       spectogramFile.close();
       SVWC=1;
-      }
+      }}
       Buffer_idx=0;
       }
       PT_YIELD(pt);
@@ -131,8 +234,8 @@ int SVWCThread(struct pt* pt){
   Serial.print("spectrogram len=");
   Serial.println(spec_dim);
   */
-    if (mode==1){SV_process_audio();}
-    if ((mode==1)&&is_enroll){WC_process_audio();}
+    SV_process_audio();
+    if (is_enroll){WC_process_audio();}
     Serial.print("is enroll: "); Serial.println(is_enroll);
     Serial.print("total words: "); Serial.println(total_words);
     Serial.println();
@@ -200,6 +303,8 @@ void setup() {
   PT_INIT(&ptState);
   PT_INIT(&ptSpecto);
   PT_INIT(&ptSVWC);
+  PT_INIT(&ptButton1Time);
+  PT_INIT(&ptButton2Time);
   
 }
 
@@ -207,6 +312,8 @@ void loop() {
   PT_SCHEDULE(stateThread(&ptState));
   PT_SCHEDULE(spectoThread(&ptSpecto));
   PT_SCHEDULE(SVWCThread(&ptSVWC));
+  PT_SCHEDULE(button1TimeThread(&ptButton1Time));
+  PT_SCHEDULE(button2TimeThread(&ptButton2Time));
 }
 
 
@@ -379,7 +486,7 @@ void SV_process_audio() {
   float score2 = cos_sim(enroll_dvec, SV_output2);
 
   Serial.println();
-  Serial.print("SV score1: "); Serial.println(score2);
+  Serial.print("SV score2: "); Serial.println(score2);
 
   // 처음과 끝 모두 등록 화자가 아니라면 패스
   is_enroll = score1>SV_thres && score2>SV_thres;
