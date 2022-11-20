@@ -30,7 +30,8 @@ FeatureProvider* feature_provider = nullptr;
 
 int total_words=0; // 총 단어 수
 float enroll_dvec[dvec_dim]; // 화자 등록 d-vector (normalized)
-float thres = 0.0; // SV 역치
+float SV_thres = 0.0; // SV 역치
+float VAD_thres = 0.0; // VAD 역치
 
 // 스펙트로그램
 int8_t spec[spec_dim]; // 실전에서는 (n*91)&40이 되도록 제로패딩
@@ -60,14 +61,27 @@ unsigned long start_time;
 tflite::AllOpsResolver resolver;
 
 // 음성 데이터 버퍼
-constexpr int Buffer_len = DEFAULT_PDM_BUFFER_SIZE*60;
-short Buffer[Buffer_len+DEFAULT_PDM_BUFFER_SIZE];
+const int audio_input=29515;
+constexpr int Buffer_len =DEFAULT_PDM_BUFFER_SIZE*59;  //DEFAULT_PDM_BUFFER_SIZE*60, ((audio_input/DEFAULT_PDM_BUFFER_SIZE)+2)*DEFAULT_PDM_BUFFER_SIZE+1;
+short Buffer[Buffer_len+(2*DEFAULT_PDM_BUFFER_SIZE)];
 unsigned int Buffer_idx=0;
 
-// mode=0: only SV, 1: only WC, 2: SVWC
-int mode = 2;
 
+// mode=0: stop Recording,  mode=1: Recording,  mode2: Learning Voice
+int mode = 1;
+int SVWC = 0;
 bool is_enroll=true;
+bool chk_VAD=true;
+
+//Files
+File spectogramFile; //이 파일에 스펙토그램 넣을 예정임.
+File enrollFile; //이 파일에 화자 목소리 저장 예정임.
+File numFile; //이 파일에 단어 수 저장.
+
+//조작
+volatile int button1_chk=1; //버튼1 조작용 변수, 눌리면 0, 아니면 1
+volatile int button2_chk=1; //버튼2 조작용 변수, 눌리면 0, 아니면 1
+
 ///////////////////////////////////////////////////////////////
 /////////////////////////PT////////////////////////////////////
 ///////////////////////////////////////////////////////////////
@@ -82,21 +96,34 @@ int stateThread(struct pt* pt){
     PT_END(pt);
   }
 
+pt ptSpecto;
+int spectoThread(struct pt* pt){
+  PT_BEGIN(pt);
+  for(;;){
+    if (Buffer_idx >= Buffer_len){
+      chk_VAD=is_active(Buffer, audio_input);
+      if(chk_VAD){
+      feature_provider->PopulateFeatureData(error_reporter, Buffer, audio_input, spec);
+      spectogramFile=SD.open("Specto.txt", FILE_WRITE);
+      for(int i=0; i<spec_dim;i++){
+        spectogramFile.println(spec[i]);
+        }
+      spectogramFile.close();
+      SVWC=1;
+      }
+      Buffer_idx=0;
+      }
+      PT_YIELD(pt);
+    }
+  PT_END(pt);
+  }
 
 
 pt ptSVWC;
 int SVWCThread(struct pt* pt){
   PT_BEGIN(pt);
   for(;;){
-    if (Buffer_idx >= Buffer_len){
-  
-    feature_provider->PopulateFeatureData(error_reporter, Buffer, 29515, spec);
-
-  
-    Serial.print("Buffer: ");
-    for (int i=0; i<1000; i++){ Serial.print(Buffer[i]); Serial.print(" ");}
-    Serial.println();
-  
+    if (SVWC==1){
   /*
   Serial.print("spectrogram: ");
   for (int i=0; i<spec_dim; i++){ Serial.print(spec[i]); Serial.print(" ");}
@@ -104,14 +131,12 @@ int SVWCThread(struct pt* pt){
   Serial.print("spectrogram len=");
   Serial.println(spec_dim);
   */
-  
-    if (mode==0||mode==2){SV_process_audio();}
-    if ((mode==1||mode==2)&&is_enroll){WC_process_audio();}
+    if (mode==1){SV_process_audio();}
+    if ((mode==1)&&is_enroll){WC_process_audio();}
     Serial.print("is enroll: "); Serial.println(is_enroll);
     Serial.print("total words: "); Serial.println(total_words);
     Serial.println();
-
-    Buffer_idx=0;
+    SVWC=0;
     }
      PT_YIELD(pt);
     }
@@ -165,20 +190,22 @@ void setup() {
         Buffer_idx=0;
       }
     }
-  }*/
+  }
   
   Serial.print("enrolled vector: ");
   for (int i=0; i<dvec_dim; i++){ Serial.print(enroll_dvec[i]); Serial.print(" ");}
-  Serial.println();
+  Serial.println();*/
 
   // PT 세팅
   PT_INIT(&ptState);
+  PT_INIT(&ptSpecto);
   PT_INIT(&ptSVWC);
   
 }
 
 void loop() {
   PT_SCHEDULE(stateThread(&ptState));
+  PT_SCHEDULE(spectoThread(&ptSpecto));
   PT_SCHEDULE(SVWCThread(&ptSVWC));
 }
 
@@ -339,8 +366,8 @@ void SV_process_audio() {
   normalize(SV_output1);
   float score1 = cos_sim(enroll_dvec, SV_output1);
 
-  Serial.print("SV vector1: ");
-  for (int i=0; i<dvec_dim; i++){ Serial.print(SV_output1[i]); Serial.print(" ");}
+//  Serial.print("SV vector1: ");
+//  for (int i=0; i<dvec_dim; i++){ Serial.print(SV_output1[i]); Serial.print(" ");}
   Serial.println();
   Serial.print("SV score1: "); Serial.println(score1);
 
@@ -351,13 +378,11 @@ void SV_process_audio() {
   normalize(SV_output2);
   float score2 = cos_sim(enroll_dvec, SV_output2);
 
-  Serial.print("SV vector2: ");
-  for (int i=0; i<dvec_dim; i++){ Serial.print(SV_output2[i]); Serial.print(" ");}
   Serial.println();
   Serial.print("SV score1: "); Serial.println(score2);
 
   // 처음과 끝 모두 등록 화자가 아니라면 패스
-  is_enroll = score1>thres && score2>thres;
+  is_enroll = score1>SV_thres && score2>SV_thres;
 }
 
 
@@ -381,4 +406,11 @@ void update_enroll_dvec(short* audio, int audio_len){
   for (int i=0;i<dvec_dim;i++){
     enroll_dvec[i] = SV_output[i]; 
   }
+}
+
+bool is_active(short* audio, int audio_len){
+  unsigned long energy = 0;
+  for(int i=0;i<audio_len;i++){ energy += audio[i]*audio[i];}
+  if(energy>=audio_len*VAD_thres){return true;}
+  else {return false;}
 }
