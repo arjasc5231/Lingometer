@@ -44,9 +44,8 @@ volatile unsigned long now=1;
 
 volatile unsigned int num_words=0; // 측정된 단어 수
 short Buffer[256]; // 음성 신호 입력받을 변수
-const int buffer2_dim=512*60;
+const int buffer2_dim=512*60; //512*60?
 short Buffer2[buffer2_dim]; //음성 신호 임시 저장용 변수
-short Buffer3[16000]; // enroll_dvec업데이트용
 volatile int w=0; //Buffer2 관리용
 volatile int Read; //음성 신호 입력용 변수
 volatile int conv2spect=0; //스펙토그램 변환 확인용 변수
@@ -64,9 +63,7 @@ volatile int tmp_count=0;
 volatile int chk_counted=0;
 volatile bool chk_VAD=0;
 
-const int g_yes_feature_data_slice_size = 91*40; //만들 스펙토그램 사이즈 91*40?
-int8_t yes_calculated_data[g_yes_feature_data_slice_size]; //만든 스펙토그램 저장 공간
-const int g_yes_30ms_sample_data_size = 29515; //인풋 오디오 데이터 사이즈, 29515?
+const int audio_input = 29515; //인풋 오디오 데이터 사이즈, 29515?
 /////////이 아래로 SVWC 전역변수//////////
 // 에러 리포터 전역변수 선언
 tflite::ErrorReporter* error_reporter = nullptr;
@@ -74,7 +71,6 @@ tflite::ErrorReporter* error_reporter = nullptr;
 // feature provider
 FeatureProvider* feature_provider = nullptr;
 
-float total_words=0; // 총 단어 수
 float enroll_dvec[dvec_dim]; // 화자 등록 d-vector (normalized)
 float SV_thres = 0; // SV 역치. 0~1
 float VAD_thres = 0; // VAD 역치. 0~128*128
@@ -105,11 +101,6 @@ int8_t* WC_model_input_buffer = nullptr;
 // 모델의 실행 시간을 체크할 전역변수
 unsigned long end_time;
 unsigned long start_time;
-
-// 아두이노 내장 LED 설정
-const int RED = 22;
-const int GREEN = 23;
-const int BLUE = 24;
 
 // 모든 Op load. 필요한 Op만 로드해서 메모리를 줄일수도 있음
 tflite::AllOpsResolver resolver;
@@ -193,9 +184,8 @@ int button2TimeThread(struct pt* pt){
           last_control=millis();
           PT_YIELD(pt);
           Serial.println("button2inin2222222");
-          for(int i=0; i<16000;i++){
-            Buffer3[i]=0;
-            Buffer2[i+8000]=0;
+          for(int i=0; i<20000;i++){
+            Buffer2[i+7000]=0;
             }
           w=0;//버퍼2 들어갈 변수도 초기화
           
@@ -203,10 +193,6 @@ int button2TimeThread(struct pt* pt){
           b2_out_time=millis();
           last_control=millis();
           Serial.println("button2outoutout2222222");
-          for(int i=0;i<16000;i++){
-            Buffer3[i]=Buffer2[i+8000];
-            }
-          update_enroll_dvec(Buffer3, 16000);
           if(SD.exists("enroll.txt")){SD.remove("enroll.txt");}
           enrollFile=SD.open("enroll.txt", FILE_WRITE);
           for(int i=0; i<dvec_dim; i++){ 
@@ -236,7 +222,7 @@ int recordingThread(struct pt* pt){
           }
           Read=0;
         }
-        if(w>=29515){ //Buffer2 꽉차면
+        if(w>=audio_input){ //Buffer2 꽉차면
         conv2spect=1;
         w=0; //스펙토그램 전환하라는 신호
         }
@@ -259,17 +245,16 @@ int spectoThread(struct pt* pt){
   PT_BEGIN(pt);
   for(;;){
     if(conv2spect==1){
-      chk_VAD=is_active(Buffer2, g_yes_30ms_sample_data_size);
+      chk_VAD=is_active(Buffer2, audio_input);
       if(chk_VAD){
-      int stat = feature_provider->PopulateFeatureData(error_reporter, Buffer2, g_yes_30ms_sample_data_size, yes_calculated_data);
+      int stat = feature_provider->PopulateFeatureData(error_reporter, Buffer2, audio_input, spec);
       Serial.print("stat "); Serial.println(stat);
       
       spectogramFile=SD.open("Specto.txt", FILE_WRITE);
       Serial.println("Here is Spectoooooooooooooooooooo");
-      for(int i=0; i<g_yes_feature_data_slice_size; i++){
-        spectogramFile.println(yes_calculated_data[i]);
-        //Serial.println(yes_calculated_data[i]);
-
+      for(int i=0; i<spec_len; i++){
+        spectogramFile.println(spec[i]);
+        //Serial.println(spec[i]);
         }
       spectogramFile.close();
       conv2spect=0;
