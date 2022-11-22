@@ -181,7 +181,7 @@ int button2TimeThread(struct pt* pt){
           b2_out_time=millis();
           last_control=millis();
           Serial.println("mode 2 recording Finished");
-          update_enroll_dvec(Buffer+8000,16000);
+          //update_enroll_dvec(Buffer+8000,16000);
           Serial.println("enroll_dvec Updated"); //enroll_dvec 초기화
           
           SD.remove("enroll.txt");
@@ -291,12 +291,12 @@ void setup() {
   error_reporter = &micro_error_reporter;
 
   // enroll_dvec 임의로 설정
-  for (int i=0;i<10;i++){ enroll_dvec[i]=1; }
+  /*for (int i=0;i<10;i++){ enroll_dvec[i]=1; }
   if(SD.exists("enroll.txt")){ //기존 학습 결과 있으면 불러옴.
     enrollFile=SD.open("enroll.txt");
     for (int i=0;i<dvec_dim;i++){enroll_dvec[i]=enrollFile.read();}
     enrollFile.close();
-    }
+    }*/
   
   SV_setup();
   WC_setup();
@@ -319,7 +319,7 @@ void setup() {
   PT_INIT(&ptSVWC);
   PT_INIT(&ptButton1Time);
   PT_INIT(&ptButton2Time);
-  PT_INIT(&ptDisplay);
+  //PT_INIT(&ptDisplay);
   
 }
 
@@ -329,7 +329,7 @@ void loop() {
   PT_SCHEDULE(SVWCThread(&ptSVWC));
   PT_SCHEDULE(button1TimeThread(&ptButton1Time));
   PT_SCHEDULE(button2TimeThread(&ptButton2Time));
-  PT_SCHEDULE(displayThread(&ptDisplay));
+  //PT_SCHEDULE(displayThread(&ptDisplay));
 }
 
 
