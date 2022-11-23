@@ -146,11 +146,13 @@ int button2TimeThread(struct pt* pt){
       PT_WAIT_UNTIL(pt, button2_chk==0);
       b2_in_time=millis();
       last_control=millis();
+      Serial.println("Button2 in");
       PT_YIELD(pt);
       
       PT_WAIT_UNTIL(pt,button2_chk==1);
       b2_out_time=millis();
       last_control=millis();
+      Serial.println("Button2 out");
       
       if(b2_out_time-b2_in_time<2000){
         if(light==0){
@@ -158,7 +160,7 @@ int button2TimeThread(struct pt* pt){
         SVWC=1; //불이 켜지면 SVWC 시작
         Serial.println("Start SVWC");
         }
-        else if(light==1){light=0;}}
+        else if(light==1){light=0; Serial.println("Light OFf");}}
          //짧게 누르면 불이 켜지거나 꺼지고
         else{
           mode=2;
@@ -284,20 +286,38 @@ void setup() {
     pinMode(2, INPUT_PULLUP);
     pinMode(4, INPUT_PULLUP); //조작 버튼 두 개 핀모드 설정
 
-     SD.begin(10); //SD카드 시작, CS핀 10번
+    SD.begin(10); //SD카드 시작, CS핀 10번
   
   // 에러 리포터 빌드
   static tflite::MicroErrorReporter micro_error_reporter;
   error_reporter = &micro_error_reporter;
 
   // enroll_dvec 임의로 설정
-  /*for (int i=0;i<10;i++){ enroll_dvec[i]=1; }
+  for (int i=0;i<10;i++){ enroll_dvec[i]=1; }
   if(SD.exists("enroll.txt")){ //기존 학습 결과 있으면 불러옴.
     enrollFile=SD.open("enroll.txt");
-    for (int i=0;i<dvec_dim;i++){enroll_dvec[i]=enrollFile.read();}
+    int enroll_idx=0;
+    float tmp=0;
+    while(enrollFile.available()){
+      tmp=enrollFile.read();
+      if(enroll_idx<dvec_dim){
+        enroll_dvec[enroll_idx]=tmp;
+        enroll_idx=enroll_idx+1;
+      }
+    }
     enrollFile.close();
-    }*/
-  
+    }
+
+  //OLED 기본 설정
+    // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
+  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;); // Don't proceed, loop forever
+  }
+  // Clear the OLED buffer
+  display.clearDisplay();
+  display.display();
+
   SV_setup();
   WC_setup();
 
@@ -319,7 +339,7 @@ void setup() {
   PT_INIT(&ptSVWC);
   PT_INIT(&ptButton1Time);
   PT_INIT(&ptButton2Time);
-  //PT_INIT(&ptDisplay);
+  PT_INIT(&ptDisplay);
   
 }
 
@@ -329,7 +349,7 @@ void loop() {
   PT_SCHEDULE(SVWCThread(&ptSVWC));
   PT_SCHEDULE(button1TimeThread(&ptButton1Time));
   PT_SCHEDULE(button2TimeThread(&ptButton2Time));
-  //PT_SCHEDULE(displayThread(&ptDisplay));
+  PT_SCHEDULE(displayThread(&ptDisplay));
 }
 
 
