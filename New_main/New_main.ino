@@ -91,8 +91,6 @@ volatile unsigned long b2_in_time=1;
 volatile unsigned long b2_out_time=1;
 volatile unsigned long last_control=1;
 volatile unsigned long now=1;
-char fBuffer1[5];
-char fBuffer2[2];
 
 ///////////////////////////////////////////////////////////////
 /////////////////////////PT////////////////////////////////////
@@ -186,6 +184,9 @@ int button2TimeThread(struct pt* pt){
           b2_out_time=millis();
           last_control=millis();
           Serial.println("mode 2 recording Finished");
+
+          for(int i=0;i<dvec_dim;i++){Serial.print(enroll_dvec[i]);}
+
           update_enroll_dvec(Buffer+8000,16000);
           normalize(enroll_dvec);
           Serial.println("enroll_dvec Updated"); //enroll_dvec 초기화
@@ -194,7 +195,7 @@ int button2TimeThread(struct pt* pt){
           enrollFile=SD.open("enroll.txt", FILE_WRITE); //enroll_dvec 저장
           for(int i=0; i<dvec_dim; i++){ 
             Serial.print(enroll_dvec[i]); 
-            enrollFile.println(int(enroll_dvec[i]*100));
+            enrollFile.println(enroll_dvec[i]);
             }
             enrollFile.close();
           Buffer_idx=0;
@@ -220,6 +221,8 @@ int spectoThread(struct pt* pt){
         spectogramFile.println(spec[i]);
         }
       spectogramFile.close();
+      Serial.println("Spectogram Generated");
+      for(int i=0;i<=Buffer_len;i++){Serial.println(Buffer[i]);}
       }}
       Buffer_idx=0;
       }
@@ -238,7 +241,7 @@ int SVWCThread(struct pt* pt){
     spectogramFile=SD.open("Specto.txt");
     PT_YIELD(pt);
     while(spectogramFile.available()){
-      spec[spec_idx]=spectogramFile.read();
+      spec[spec_idx]=spectogramFile.parseInt();
       spec_idx=spec_idx+1;
       if(spec_idx>=spec_dim){
         SV_process_audio();
@@ -253,6 +256,10 @@ int SVWCThread(struct pt* pt){
     spectogramFile.close();
     SD.remove("Specto.txt");
     SVWC=0;
+    SD.remove("numW.txt");
+    numFile=SD.open("numW.txt",FILE_WRITE);
+    numFile.println(total_words);
+    numFile.close();
     }
      PT_YIELD(pt);
     }
@@ -297,6 +304,7 @@ void setup() {
     pinMode(4, INPUT_PULLUP); //조작 버튼 두 개 핀모드 설정
 
     SD.begin(10); //SD카드 시작, CS핀 10번
+    while(!SD.begin(10)){Serial.println("Initializing SD...");}
   
   // 에러 리포터 빌드
   static tflite::MicroErrorReporter micro_error_reporter;
@@ -304,18 +312,34 @@ void setup() {
 
   // enroll_dvec 임의로 설정
   for (int i=0;i<10;i++){ enroll_dvec[i]=1; }
+
   if(SD.exists("enroll.txt")){ //기존 학습 결과 있으면 불러옴.
     enrollFile=SD.open("enroll.txt");
     int enroll_idx=0;
     while(enrollFile.available()){
       if(enroll_idx<dvec_dim){
-        enroll_dvec[enroll_idx]=float(enrollFile.parseInt())/100;
-        Serial.println(enroll_dvec[enroll_idx]);
+        enroll_dvec[enroll_idx]=enrollFile.parseFloat();
         enroll_idx=enroll_idx+1;
-      }
+      }else{enrollFile.read();}
+      
     }
     enrollFile.close();
     }
+  normalize(enroll_dvec);
+  
+  //이전 측정값 불러오기
+  if(SD.exists("numW.txt")){
+    numFile=SD.open("numW.txt");
+    int w=0;
+    while(numFile.available()){
+    if(w==0){
+      w=w+1;
+      total_words=numFile.parseInt();}
+      else{numFile.read();}
+      
+    }
+    numFile.close();
+  }
 
   //OLED 기본 설정
     // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
