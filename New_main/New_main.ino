@@ -73,6 +73,7 @@ unsigned int Buffer_idx=0;
 int mode = 1;
 int light=1;
 int SVWC = 0;
+int spec_idx=0;
 bool is_enroll=true;
 bool chk_VAD=true;
 
@@ -232,11 +233,23 @@ int SVWCThread(struct pt* pt){
   for(;;){
     if (SVWC==1){
     Serial.println("Start SVWC");
-    SV_process_audio();
-    if (is_enroll){WC_process_audio();}
-    Serial.print("is enroll: "); Serial.println(is_enroll);
-    Serial.print("total words: "); Serial.println(total_words);
-    Serial.println();
+    spectogramFile=SD.open("Specto.txt");
+    PT_YIELD(pt);
+    while(spectogramFile.available()){
+      spec[spec_idx]=spectogramFile.read();
+      spec_idx=spec_idx+1;
+      if(spec_idx>=spec_dim){
+        SV_process_audio();
+        if (is_enroll){WC_process_audio();}
+        PT_YIELD(pt);
+        Serial.print("is enroll: "); Serial.println(is_enroll);
+        Serial.print("total words: "); Serial.println(total_words);
+        Serial.println();
+        spec_idx=0;        
+      }
+    }
+    spectogramFile.close();
+    SD.remove("Specto.txt");
     SVWC=0;
     }
      PT_YIELD(pt);
