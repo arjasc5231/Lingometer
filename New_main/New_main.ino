@@ -332,7 +332,7 @@ int button1TimeThread(struct pt* pt){
       light=1;
       
       if(b1_out_time-b1_in_time<2000){
-        if(mode==0){mode=1; Serial.println("now mode 1");}
+        if(mode==0){mode=1; Serial.println("now mode 1"); Buffer_idx=0; }
         else if(mode==1){mode=0; Serial.println("now mode 0");} //짧게 누르면 측정 일시정지/ 재개하고
         } else {
           total_words=0; 
