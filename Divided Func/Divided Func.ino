@@ -32,7 +32,7 @@ FeatureProvider* feature_provider = nullptr;
 
 int total_words=0; // 총 단어 수
 float enroll_dvec[dvec_dim]; // 화자 등록 d-vector (normalized)
-float SV_thres = 0.0; // SV 역치
+float SV_thres = 0.9; // SV 역치
 float VAD_thres = 0.0; // VAD 역치
 
 // 스펙트로그램
@@ -207,7 +207,7 @@ int spectoThread(struct pt* pt){
   PT_BEGIN(pt);
   for(;;){
     if (Buffer_idx >= Buffer_len){
-      if(mode==1){
+      if(mode==1 || mode==0){
       chk_VAD=is_active(Buffer, audio_input);
       if(chk_VAD){
       feature_provider->PopulateFeatureData(error_reporter, Buffer, audio_input, spec);

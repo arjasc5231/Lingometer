@@ -58,9 +58,9 @@ void onRecording(int num){
 
   void onSVing(String a){
     display.clearDisplay();
-    display.setTextSize(3);
+    display.setTextSize(2);
     display.setTextColor(WHITE);
-    display.setCursor(15,14);
+    display.setCursor(30,14);
     display.println(a);
     display.display();
     }
