@@ -75,6 +75,7 @@ int light=1;
 int SVWC = 0;
 int spec_idx=0;
 bool is_enroll=true;
+bool voice=false;
 bool chk_VAD=true;
 
 //Files
@@ -99,7 +100,6 @@ pt ptState;
 int stateThread(struct pt* pt){
   PT_BEGIN(pt);
   for(;;){
-    button1_chk=digitalRead(2);
     button2_chk=digitalRead(4);
     PT_YIELD(pt);
     }
@@ -143,36 +143,32 @@ int button2TimeThread(struct pt* pt){
   for(;;){
       PT_YIELD(pt);
       
-      if(mode==1 ||mode==0){ //모드가 1이나 0일때에는 화면 on, off / mode 2 변환용 + mode 2 관리/enrollvec 업뎃
+      if(mode!=2){ //모드 0:SV, 모드1:WC, 모드2:학습
       PT_WAIT_UNTIL(pt, button2_chk==0);
       b2_in_time=millis();
-      last_control=millis();
       Serial.println("Button2 in");
       PT_YIELD(pt);
       
       PT_WAIT_UNTIL(pt,button2_chk==1);
       b2_out_time=millis();
-      last_control=millis();
       Serial.println("Button2 out");
       
       if(b2_out_time-b2_in_time<2000){
-        if(light==0){
-        light=1;
-        SVWC=1; //불이 켜지면 SVWC 시작
-        Serial.println("Start SVWC");
+          if(mode==1){
+            mode=0; 
+            Serial.println("mode SV");
+            total_words=0;
+            }
+          else if(mode==0){mode=1; Serial.println("mode WC");}
         }
-        else if(light==1){light=0; Serial.println("Light OFf");}}
-         //짧게 누르면 불이 켜지거나 꺼지고
         else{
-          mode=2;
           Serial.println("Start Voice Learning");
-          light=1;;
+          mode=2;
           } //길게 누르면 불이 무조건 켜지면서 러닝 모드. 이후엔 다시 모드 0이나 1 상태로.
         }
         else{ //모드 2에 들어오면 학습하기
           PT_WAIT_UNTIL(pt, button2_chk==0);
           b2_in_time=millis();
-          last_control=millis();
           Serial.println("Start mode 2 Recording");
           for(int i=0; i<20000;i++){ //Buffer 비워주고
             Buffer[i+7000]=0;
@@ -182,10 +178,7 @@ int button2TimeThread(struct pt* pt){
           
           PT_WAIT_UNTIL(pt,button2_chk==1);
           b2_out_time=millis();
-          last_control=millis();
           Serial.println("mode 2 recording Finished");
-
-          for(int i=0;i<dvec_dim;i++){Serial.print(enroll_dvec[i]);}
 
           update_enroll_dvec(Buffer+8000,16000);
           normalize(enroll_dvec);
@@ -199,7 +192,9 @@ int button2TimeThread(struct pt* pt){
             }
             enrollFile.close();
           Buffer_idx=0;
-          mode=0; //학습 다했으면 일시정지 상태로 만들기
+          mode=0;
+          total_words=0;
+           //학습 다했으면 SV로 만들기
           }
       PT_YIELD(pt);
     }
@@ -216,13 +211,8 @@ int spectoThread(struct pt* pt){
       chk_VAD=is_active(Buffer, audio_input);
       if(chk_VAD){
       feature_provider->PopulateFeatureData(error_reporter, Buffer, audio_input, spec);
-      spectogramFile=SD.open("Specto.txt", FILE_WRITE);
-      for(int i=0; i<spec_dim;i++){
-        spectogramFile.println(spec[i]);
-        }
-      spectogramFile.close();
       Serial.println("Spectogram Generated");
-      for(int i=0;i<=Buffer_len;i++){Serial.print(Buffer[i]); Serial.print(" ");}
+      SVWC=1;
       }}
       Buffer_idx=0;
       }
@@ -236,30 +226,17 @@ pt ptSVWC;
 int SVWCThread(struct pt* pt){
   PT_BEGIN(pt);
   for(;;){
-    if (SVWC==1){
+    if (SVWC!=0){
     Serial.println("Start SVWC");
-    spectogramFile=SD.open("Specto.txt");
-    PT_YIELD(pt);
-    while(spectogramFile.available()){
-      spec[spec_idx]=spectogramFile.parseInt();
-      spec_idx=spec_idx+1;
-      if(spec_idx>=spec_dim){
-        SV_process_audio();
-        if (is_enroll){WC_process_audio();}
-        PT_YIELD(pt);
-        Serial.print("is enroll: "); Serial.println(is_enroll);
-        Serial.print("total words: "); Serial.println(total_words);
-        Serial.println();
-        spec_idx=0;
-      }
+    if(mode==0){
+      SV_process_audio();
+      if(is_enroll){voice=true;}
+      else{voice=false;}
+    } else if(mode==1){
+      WC_process_audio();
     }
-    spectogramFile.close();
-    SD.remove("Specto.txt");
+    PT_YIELD(pt);
     SVWC=0;
-    SD.remove("numW.txt");
-    numFile=SD.open("numW.txt",FILE_WRITE);
-    numFile.println(total_words);
-    numFile.close();
     }
      PT_YIELD(pt);
     }
@@ -271,20 +248,12 @@ int displayThread(struct pt* pt){
   PT_BEGIN(pt);
   for(;;){
     PT_YIELD(pt);
-    if(light==1){ //일단 불이 들어와있으면
-    if(SVWC==0){
+ //일단 불이 들어와있으면
+
     if(mode==1){onRecording(total_words);}
-    else if(mode==0){onStop(total_words);}
+    else if(mode==0){if(voice){onSVing("YES");} else{onSVing("NO");}}
     else {forLearning("Press Button, and Say Something...");}//모드 0,1,2일때 해당하는 화면 디스플레이
-      } else{onCounting(total_words);} //측정 중이면 Counting.
-      } else{lightOff();} // 불 안들어와있으면 꺼줌.
-      
-      if(millis()-last_control>100000){ //마지막 조작에서 10초 이상 지나면 -> 일단 100초로 해둠.
-        light=0;
-        lightOff(); //불 끄고
-        PT_YIELD(pt);
-        PT_WAIT_UNTIL(pt,light==1); //다시 조작할때까지(불켜질 때까지) 기다림.
-        }
+
       PT_YIELD(pt);
   }
   PT_END(pt);
@@ -326,20 +295,8 @@ void setup() {
     enrollFile.close();
     }
   normalize(enroll_dvec);
-  
-  //이전 측정값 불러오기
-  if(SD.exists("numW.txt")){
-    numFile=SD.open("numW.txt");
-    int w=0;
-    while(numFile.available()){
-    if(w==0){
-      w=w+1;
-      total_words=numFile.parseInt();}
-      else{numFile.read();}
-      
-    }
-    numFile.close();
-  }
+ 
+ 
 
   //OLED 기본 설정
     // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
@@ -370,7 +327,6 @@ void setup() {
   PT_INIT(&ptState);
   PT_INIT(&ptSpecto);
   PT_INIT(&ptSVWC);
-  PT_INIT(&ptButton1Time);
   PT_INIT(&ptButton2Time);
   PT_INIT(&ptDisplay);
   
@@ -380,7 +336,6 @@ void loop() {
   PT_SCHEDULE(stateThread(&ptState));
   PT_SCHEDULE(spectoThread(&ptSpecto));
   PT_SCHEDULE(SVWCThread(&ptSVWC));
-  PT_SCHEDULE(button1TimeThread(&ptButton1Time));
   PT_SCHEDULE(button2TimeThread(&ptButton2Time));
   PT_SCHEDULE(displayThread(&ptDisplay));
 }
