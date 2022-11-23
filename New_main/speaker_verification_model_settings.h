@@ -13,6 +13,6 @@ constexpr int kFeatureSliceStrideMs = 20;
 constexpr int kFeatureSliceDurationMs = 30;
 
 constexpr int spec_dim = 91*40;  // SV용 spec이랑 WC용 spec이 달라서 구분할 필요가 있음
-constexpr int dvec_dim = 25;
+constexpr int dvec_dim = 10;
 
 #endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_MICRO_SPEECH_MICRO_FEATURES_MICRO_MODEL_SETTINGS_H_

@@ -42,7 +42,7 @@ int8_t spec[spec_dim]; // 실전에서는 (n*91)&40이 되도록 제로패딩
 const tflite::Model* SV_model = nullptr;
 tflite::MicroInterpreter* SV_interpreter = nullptr;
 TfLiteTensor* SV_model_input = nullptr;
-constexpr int SV_tensorArenaSize = 22500; // 모델에 따라 크기 조정. 나중에 상수파일로 옮기기
+constexpr int SV_tensorArenaSize = 12000; // 모델에 따라 크기 조정. 나중에 상수파일로 옮기기
 uint8_t SV_tensor_arena[SV_tensorArenaSize];
 int8_t* SV_model_input_buffer = nullptr;
 
@@ -50,7 +50,7 @@ int8_t* SV_model_input_buffer = nullptr;
 const tflite::Model* WC_model = nullptr;
 tflite::MicroInterpreter* WC_interpreter = nullptr;
 TfLiteTensor* WC_model_input = nullptr;
-constexpr int WC_tensorArenaSize = 70000; // 모델에 따라 크기 조정. 나중에 상수파일로 옮기기
+constexpr int WC_tensorArenaSize = 60000; // 모델에 따라 크기 조정. 나중에 상수파일로 옮기기
 uint8_t WC_tensor_arena[WC_tensorArenaSize];
 //int8_t WC_feature_buffer[kFeatureElementCount];
 int8_t* WC_model_input_buffer = nullptr;
@@ -141,14 +141,15 @@ int button2TimeThread(struct pt* pt){
   PT_BEGIN(pt);
 
   for(;;){
-      PT_YIELD(pt);
-      
-      if(mode==1 ||mode==0){ //모드가 1이나 0일때에는 화면 on, off / mode 2 변환용 + mode 2 관리/enrollvec 업뎃
+    PT_YIELD(pt);
+  
+    if(mode==1 || mode==0){ //모드가 1이나 0일때에는 화면 on, off / mode 2 변환용 + mode 2 관리/enrollvec 업뎃
       PT_WAIT_UNTIL(pt, button2_chk==0);
       b2_in_time=millis();
       last_control=millis();
       Serial.println("Button2 in");
       PT_YIELD(pt);
+      Serial.println("button 2 in");
       
       PT_WAIT_UNTIL(pt,button2_chk==1);
       b2_out_time=millis();
@@ -157,9 +158,9 @@ int button2TimeThread(struct pt* pt){
       
       if(b2_out_time-b2_in_time<2000){
         if(light==0){
-        light=1;
-        SVWC=1; //불이 켜지면 SVWC 시작
-        Serial.println("Start SVWC");
+          light=1;
+          SVWC=1; //불이 켜지면 SVWC 시작
+          Serial.println("Start SVWC");
         }
         else if(light==1){light=0; Serial.println("Light OFf");}}
          //짧게 누르면 불이 켜지거나 꺼지고
@@ -202,7 +203,25 @@ int button2TimeThread(struct pt* pt){
           mode=0; //학습 다했으면 일시정지 상태로 만들기
           }
       PT_YIELD(pt);
+      
+      PT_WAIT_UNTIL(pt,button2_chk==1);
+      last_control=millis();
+      Serial.println("mode 2 recording Finished");
+      //update_enroll_dvec(Buffer+8000,16000);
+      Serial.println("enroll_dvec Updated"); //enroll_dvec 초기화
+      
+      SD.remove("enroll.txt");
+      enrollFile=SD.open("enroll.txt", FILE_WRITE); //enroll_dvec 저장
+      for(int i=0; i<dvec_dim; i++){ 
+        Serial.print(enroll_dvec[i]); 
+        enrollFile.println(enroll_dvec[i]);
+      }
+      enrollFile.close();
+      Buffer_idx=0;
+      mode=0; //학습 다했으면 일시정지 상태로 만들기
     }
+    PT_YIELD(pt);
+  }
   PT_END(pt);
 }
 
@@ -272,11 +291,11 @@ int displayThread(struct pt* pt){
   for(;;){
     PT_YIELD(pt);
     if(light==1){ //일단 불이 들어와있으면
-    if(SVWC==0){
-    if(mode==1){onRecording(total_words);}
-    else if(mode==0){onStop(total_words);}
-    else {forLearning("Press Button, and Say Something...");}//모드 0,1,2일때 해당하는 화면 디스플레이
-      } else{onCounting(total_words);} //측정 중이면 Counting.
+      if(SVWC==0){
+            if(mode==1){onRecording(total_words);}
+              else if(mode==0){onStop(total_words);}
+              else {forLearning("Press Button, and Say Something...");}//모드 0,1,2일때 해당하는 화면 디스플레이
+      }   else{onCounting(total_words);} //측정 중이면 Counting.
       } else{lightOff();} // 불 안들어와있으면 꺼줌.
       
       if(millis()-last_control>100000){ //마지막 조작에서 10초 이상 지나면 -> 일단 100초로 해둠.
@@ -372,7 +391,7 @@ void setup() {
   PT_INIT(&ptSVWC);
   PT_INIT(&ptButton1Time);
   PT_INIT(&ptButton2Time);
-  PT_INIT(&ptDisplay);
+  //PT_INIT(&ptDisplay);
   
 }
 
@@ -382,7 +401,7 @@ void loop() {
   PT_SCHEDULE(SVWCThread(&ptSVWC));
   PT_SCHEDULE(button1TimeThread(&ptButton1Time));
   PT_SCHEDULE(button2TimeThread(&ptButton2Time));
-  PT_SCHEDULE(displayThread(&ptDisplay));
+  //PT_SCHEDULE(displayThread(&ptDisplay));
 }
 
 
@@ -408,7 +427,7 @@ void SV_call(int8_t* input, float* output){
 
   // 모델 아웃풋 얻기, 에러 체크
   TfLiteTensor* SV_model_output = SV_interpreter->output(0);
-  if ((SV_model_output->dims->size != 2) || (SV_model_output->dims->data[0] != 1) || (SV_model_output->dims->data[1] != 50)) {
+  if ((SV_model_output->dims->size != 2) || (SV_model_output->dims->data[0] != 1) || (SV_model_output->dims->data[1] != dvec_dim)) {
     TF_LITE_REPORT_ERROR(error_reporter, "Bad output tensor parameters in model");
     return;
   }
@@ -537,7 +556,7 @@ void onPDMdata() {
 
 void SV_process_audio() {
   int8_t* SV_input1 = spec;
-  float SV_output1[50];
+  float SV_output1[dvec_dim];
   SV_call(SV_input1, SV_output1);
   normalize(SV_output1);
   float score1 = cos_sim(enroll_dvec, SV_output1);
@@ -549,7 +568,7 @@ void SV_process_audio() {
 
   // 끝에서 SV돌리고 cosine similarity 계산
   int8_t* SV_input2 = spec+spec_dim-40*49;
-  float SV_output2[50];
+  float SV_output2[dvec_dim];
   SV_call(SV_input2, SV_output2);
   normalize(SV_output2);
   float score2 = cos_sim(enroll_dvec, SV_output2);
