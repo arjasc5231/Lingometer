@@ -92,317 +92,6 @@ volatile unsigned long b2_out_time=1;
 volatile unsigned long last_control=1;
 volatile unsigned long now=1;
 
-///////////////////////////////////////////////////////////////
-/////////////////////////PT////////////////////////////////////
-///////////////////////////////////////////////////////////////
-pt ptState;
-int stateThread(struct pt* pt){
-  PT_BEGIN(pt);
-  for(;;){
-    button1_chk=digitalRead(2);
-    button2_chk=digitalRead(4);
-    PT_YIELD(pt);
-    }
-    PT_END(pt);
-  }
-
-pt ptButton1Time; // 버튼1 프레스 시간 확인 및 조작용 PT
-int button1TimeThread(struct pt* pt){
-  PT_BEGIN(pt);
-  for(;;){
-      PT_YIELD(pt);
-      
-      PT_WAIT_UNTIL(pt, button1_chk==0);
-      b1_in_time=millis();
-      last_control=millis();
-      PT_YIELD(pt);
-      
-      PT_WAIT_UNTIL(pt,button1_chk==1);
-      b1_out_time=millis();
-      last_control=millis();
-      light=1;
-      
-      if(b1_out_time-b1_in_time<2000){
-        if(mode==0){mode=1; Serial.println("now mode 1");}
-        else if(mode==1){mode=0; Serial.println("now mode 0");} //짧게 누르면 측정 일시정지/ 재개하고
-        } else {
-          total_words=0; 
-          SD.remove("Specto.txt");
-          SD.remove("numW.txt");
-          Serial.println("Reset TNW");
-          } //길게 누르면 측정 초기화한다.
-      PT_YIELD(pt);
-    }
-  PT_END(pt);
-  }
-
-pt ptButton2Time; // 버튼2 프레스 시간 확인 및 조작용 PT
-int button2TimeThread(struct pt* pt){
-  PT_BEGIN(pt);
-
-  for(;;){
-    PT_YIELD(pt);
-  
-    if(mode==1 || mode==0){ //모드가 1이나 0일때에는 화면 on, off / mode 2 변환용 + mode 2 관리/enrollvec 업뎃
-      PT_WAIT_UNTIL(pt, button2_chk==0);
-      b2_in_time=millis();
-      last_control=millis();
-      Serial.println("Button2 in");
-      PT_YIELD(pt);
-      Serial.println("button 2 in");
-      
-      PT_WAIT_UNTIL(pt,button2_chk==1);
-      b2_out_time=millis();
-      last_control=millis();
-      Serial.println("Button2 out");
-      
-      if(b2_out_time-b2_in_time<2000){
-        if(light==0){
-          light=1;
-          SVWC=1; //불이 켜지면 SVWC 시작
-          Serial.println("Start SVWC");
-        }
-        else if(light==1){light=0; Serial.println("Light OFf");}}
-         //짧게 누르면 불이 켜지거나 꺼지고
-        else{
-          mode=2;
-          Serial.println("Start Voice Learning");
-          light=1;;
-          } //길게 누르면 불이 무조건 켜지면서 러닝 모드. 이후엔 다시 모드 0이나 1 상태로.
-        }
-        else{ //모드 2에 들어오면 학습하기
-          PT_WAIT_UNTIL(pt, button2_chk==0);
-          b2_in_time=millis();
-          last_control=millis();
-          Serial.println("Start mode 2 Recording");
-          for(int i=0; i<20000;i++){ //Buffer 비워주고
-            Buffer[i+7000]=0;
-            }
-          Buffer_idx=0;
-          PT_YIELD(pt);
-          
-          PT_WAIT_UNTIL(pt,button2_chk==1);
-          b2_out_time=millis();
-          last_control=millis();
-          Serial.println("mode 2 recording Finished");
-
-          for(int i=0;i<dvec_dim;i++){Serial.print(enroll_dvec[i]);}
-
-          update_enroll_dvec(Buffer+8000,16000);
-          normalize(enroll_dvec);
-          Serial.println("enroll_dvec Updated"); //enroll_dvec 초기화
-          
-          SD.remove("enroll.txt");
-          enrollFile=SD.open("enroll.txt", FILE_WRITE); //enroll_dvec 저장
-          for(int i=0; i<dvec_dim; i++){ 
-            Serial.print(enroll_dvec[i]); 
-            enrollFile.println(enroll_dvec[i]);
-            }
-            enrollFile.close();
-          Buffer_idx=0;
-          mode=0; //학습 다했으면 일시정지 상태로 만들기
-          }
-      PT_YIELD(pt);
-      
-      PT_WAIT_UNTIL(pt,button2_chk==1);
-      last_control=millis();
-      Serial.println("mode 2 recording Finished");
-      //update_enroll_dvec(Buffer+8000,16000);
-      Serial.println("enroll_dvec Updated"); //enroll_dvec 초기화
-      
-      SD.remove("enroll.txt");
-      enrollFile=SD.open("enroll.txt", FILE_WRITE); //enroll_dvec 저장
-      for(int i=0; i<dvec_dim; i++){ 
-        Serial.print(enroll_dvec[i]); 
-        enrollFile.println(enroll_dvec[i]);
-      }
-      enrollFile.close();
-      Buffer_idx=0;
-      mode=0; //학습 다했으면 일시정지 상태로 만들기
-    }
-    PT_YIELD(pt);
-  }
-  PT_END(pt);
-}
-
-
-pt ptSpecto;
-int spectoThread(struct pt* pt){
-  PT_BEGIN(pt);
-  for(;;){
-    if (Buffer_idx >= Buffer_len){
-      if(mode==1){
-      chk_VAD=is_active(Buffer, audio_input);
-      if(chk_VAD){
-      feature_provider->PopulateFeatureData(error_reporter, Buffer, audio_input, spec);
-      spectogramFile=SD.open("Specto.txt", FILE_WRITE);
-      for(int i=0; i<spec_dim;i++){
-        spectogramFile.println(spec[i]);
-        }
-      spectogramFile.close();
-      Serial.println("Spectogram Generated");
-      for(int i=0;i<=Buffer_len;i++){Serial.print(Buffer[i]); Serial.print(" ");}
-      }}
-      Buffer_idx=0;
-      }
-      PT_YIELD(pt);
-    }
-  PT_END(pt);
-  }
-
-
-pt ptSVWC;
-int SVWCThread(struct pt* pt){
-  PT_BEGIN(pt);
-  for(;;){
-    if (SVWC==1){
-    Serial.println("Start SVWC");
-    spectogramFile=SD.open("Specto.txt");
-    PT_YIELD(pt);
-    while(spectogramFile.available()){
-      spec[spec_idx]=spectogramFile.parseInt();
-      spec_idx=spec_idx+1;
-      if(spec_idx>=spec_dim){
-        SV_process_audio();
-        if (is_enroll){WC_process_audio();}
-        PT_YIELD(pt);
-        Serial.print("is enroll: "); Serial.println(is_enroll);
-        Serial.print("total words: "); Serial.println(total_words);
-        Serial.println();
-        spec_idx=0;
-      }
-    }
-    spectogramFile.close();
-    SD.remove("Specto.txt");
-    SVWC=0;
-    SD.remove("numW.txt");
-    numFile=SD.open("numW.txt",FILE_WRITE);
-    numFile.println(total_words);
-    numFile.close();
-    }
-     PT_YIELD(pt);
-    }
-  PT_END(pt);
-  }
-
-pt ptDisplay; //모드에 맞는 디스플레이용 pt
-int displayThread(struct pt* pt){
-  PT_BEGIN(pt);
-  for(;;){
-    PT_YIELD(pt);
-    if(light==1){ //일단 불이 들어와있으면
-      if(SVWC==0){
-            if(mode==1){onRecording(total_words);}
-              else if(mode==0){onStop(total_words);}
-              else {forLearning("Press Button, and Say Something...");}//모드 0,1,2일때 해당하는 화면 디스플레이
-      }   else{onCounting(total_words);} //측정 중이면 Counting.
-      } else{lightOff();} // 불 안들어와있으면 꺼줌.
-      
-      if(millis()-last_control>100000){ //마지막 조작에서 10초 이상 지나면 -> 일단 100초로 해둠.
-        light=0;
-        lightOff(); //불 끄고
-        PT_YIELD(pt);
-        PT_WAIT_UNTIL(pt,light==1); //다시 조작할때까지(불켜질 때까지) 기다림.
-        }
-      PT_YIELD(pt);
-  }
-  PT_END(pt);
-  }
-
-
-
-///////////////////////////////////////////////////////////////
-///////////////////////////Func////////////////////////////////
-///////////////////////////////////////////////////////////////
-
-
-
-void setup() {
-    Serial.begin(9600);
-    pinMode(2, INPUT_PULLUP);
-    pinMode(4, INPUT_PULLUP); //조작 버튼 두 개 핀모드 설정
-
-    SD.begin(10); //SD카드 시작, CS핀 10번
-    while(!SD.begin(10)){Serial.println("Initializing SD...");}
-  
-  // 에러 리포터 빌드
-  static tflite::MicroErrorReporter micro_error_reporter;
-  error_reporter = &micro_error_reporter;
-
-  // enroll_dvec 임의로 설정
-  for (int i=0;i<10;i++){ enroll_dvec[i]=1; }
-
-  if(SD.exists("enroll.txt")){ //기존 학습 결과 있으면 불러옴.
-    enrollFile=SD.open("enroll.txt");
-    int enroll_idx=0;
-    while(enrollFile.available()){
-      if(enroll_idx<dvec_dim){
-        enroll_dvec[enroll_idx]=enrollFile.parseFloat();
-        enroll_idx=enroll_idx+1;
-      }else{enrollFile.read();}
-      
-    }
-    enrollFile.close();
-    }
-  normalize(enroll_dvec);
-  
-  //이전 측정값 불러오기
-  if(SD.exists("numW.txt")){
-    numFile=SD.open("numW.txt");
-    int w=0;
-    while(numFile.available()){
-    if(w==0){
-      w=w+1;
-      total_words=numFile.parseInt();}
-      else{numFile.read();}
-      
-    }
-    numFile.close();
-  }
-
-  //OLED 기본 설정
-    // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
-  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
-    Serial.println(F("SSD1306 allocation failed"));
-    for(;;); // Don't proceed, loop forever
-  }
-  // Clear the OLED buffer
-  display.clearDisplay();
-  display.display();
-
-  SV_setup();
-  WC_setup();
-
-  // FeatureProvider 생성
-  static FeatureProvider static_feature_provider(kFeatureElementCount, spec);
-  feature_provider = &static_feature_provider;
-
-  // 마이크 설정
-  PDM.onReceive(onPDMdata);
-  if(!PDM.begin(1,16000)){
-    Serial.println("Failed to start PDM!");
-    while(1);
-  }
-
-
-  // PT 세팅
-  PT_INIT(&ptState);
-  PT_INIT(&ptSpecto);
-  PT_INIT(&ptSVWC);
-  PT_INIT(&ptButton1Time);
-  PT_INIT(&ptButton2Time);
-  //PT_INIT(&ptDisplay);
-  
-}
-
-void loop() {
-  PT_SCHEDULE(stateThread(&ptState));
-  PT_SCHEDULE(spectoThread(&ptSpecto));
-  PT_SCHEDULE(SVWCThread(&ptSVWC));
-  PT_SCHEDULE(button1TimeThread(&ptButton1Time));
-  PT_SCHEDULE(button2TimeThread(&ptButton2Time));
-  //PT_SCHEDULE(displayThread(&ptDisplay));
-}
 
 
 
@@ -609,3 +298,300 @@ bool is_active(short* audio, int audio_len){
   if(energy>=audio_len*VAD_thres){return true;}
   else {return false;}
 }
+
+
+
+///////////////////////////////////////////////////////////////
+/////////////////////////PT////////////////////////////////////
+///////////////////////////////////////////////////////////////
+pt ptState;
+int stateThread(struct pt* pt){
+  PT_BEGIN(pt);
+  for(;;){
+    button1_chk=digitalRead(2);
+    button2_chk=digitalRead(4);
+    PT_YIELD(pt);
+    }
+    PT_END(pt);
+  }
+
+pt ptButton1Time; // 버튼1 프레스 시간 확인 및 조작용 PT
+int button1TimeThread(struct pt* pt){
+  PT_BEGIN(pt);
+  for(;;){
+      PT_YIELD(pt);
+      
+      PT_WAIT_UNTIL(pt, button1_chk==0);
+      b1_in_time=millis();
+      last_control=millis();
+      PT_YIELD(pt);
+      
+      PT_WAIT_UNTIL(pt,button1_chk==1);
+      b1_out_time=millis();
+      last_control=millis();
+      light=1;
+      
+      if(b1_out_time-b1_in_time<2000){
+        if(mode==0){mode=1; Serial.println("now mode 1");}
+        else if(mode==1){mode=0; Serial.println("now mode 0");} //짧게 누르면 측정 일시정지/ 재개하고
+        } else {
+          total_words=0; 
+          SD.remove("Specto.txt");
+          SD.remove("numW.txt");
+          Serial.println("Reset TNW");
+          } //길게 누르면 측정 초기화한다.
+      PT_YIELD(pt);
+    }
+  PT_END(pt);
+  }
+
+pt ptButton2Time; // 버튼2 프레스 시간 확인 및 조작용 PT
+int button2TimeThread(struct pt* pt){
+  PT_BEGIN(pt);
+
+  for(;;){
+    PT_YIELD(pt);
+  
+    if(mode==1 || mode==0){ //모드가 1이나 0일때에는 화면 on, off / mode 2 변환용 + mode 2 관리/enrollvec 업뎃
+      PT_WAIT_UNTIL(pt, button2_chk==0);
+      b2_in_time=millis();
+      last_control=millis();
+      Serial.println("Button2 in");
+      PT_YIELD(pt);
+      Serial.println("button 2 in");
+      
+      PT_WAIT_UNTIL(pt,button2_chk==1);
+      b2_out_time=millis();
+      last_control=millis();
+      Serial.println("Button2 out");
+      
+      if(b2_out_time-b2_in_time<2000){
+        if(light==0){
+          light=1;
+          SVWC=1; //불이 켜지면 SVWC 시작
+          Serial.println("Start SVWC");
+        }
+        else if(light==1){light=0; Serial.println("Light OFf");}}
+         //짧게 누르면 불이 켜지거나 꺼지고
+        else{
+          mode=2;
+          Serial.println("Start Voice Learning");
+          light=1;;
+          } //길게 누르면 불이 무조건 켜지면서 러닝 모드. 이후엔 다시 모드 0이나 1 상태로.
+        }
+        else{ //모드 2에 들어오면 학습하기
+          PT_WAIT_UNTIL(pt, button2_chk==0);
+          b2_in_time=millis();
+          last_control=millis();
+          Serial.println("Start mode 2 Recording");
+          for(int i=0; i<20000;i++){ //Buffer 비워주고
+            Buffer[i+7000]=0;
+            }
+          Buffer_idx=0;
+          PT_YIELD(pt);
+          
+          PT_WAIT_UNTIL(pt,button2_chk==1);
+          b2_out_time=millis();
+          last_control=millis();
+          Serial.println("mode 2 recording Finished");
+
+          for(int i=0;i<dvec_dim;i++){Serial.print(enroll_dvec[i]);}
+
+          update_enroll_dvec(Buffer+8000,16000);
+          normalize(enroll_dvec);
+          Serial.println("enroll_dvec Updated"); //enroll_dvec 초기화
+          
+          SD.remove("enroll.txt");
+          enrollFile=SD.open("enroll.txt", FILE_WRITE); //enroll_dvec 저장
+          for(int i=0; i<dvec_dim; i++){ 
+            Serial.print(enroll_dvec[i]); 
+            enrollFile.println(enroll_dvec[i]);
+            }
+            enrollFile.close();
+          Buffer_idx=0;
+          mode=0; //학습 다했으면 일시정지 상태로 만들기
+          }
+      PT_YIELD(pt);
+  }
+  PT_END(pt);
+}
+
+
+pt ptSpecto;
+int spectoThread(struct pt* pt){
+  PT_BEGIN(pt);
+  for(;;){
+    if (Buffer_idx >= Buffer_len){
+      if(mode==1){
+      chk_VAD=is_active(Buffer, audio_input);
+      if(chk_VAD){
+      feature_provider->PopulateFeatureData(error_reporter, Buffer, audio_input, spec);
+      spectogramFile=SD.open("Specto.txt", FILE_WRITE);
+      for(int i=0; i<spec_dim;i++){
+        spectogramFile.println(spec[i]);
+        }
+      spectogramFile.close();
+      Serial.println("Spectogram Generated");
+      }}
+      Buffer_idx=0;
+      }
+      PT_YIELD(pt);
+    }
+  PT_END(pt);
+  }
+
+
+pt ptSVWC;
+int SVWCThread(struct pt* pt){
+  PT_BEGIN(pt);
+  for(;;){
+    if (SVWC==1){
+    Serial.println("Start SVWC");
+    spectogramFile=SD.open("Specto.txt");
+    PT_YIELD(pt);
+    while(spectogramFile.available()){
+      spec[spec_idx]=spectogramFile.parseInt();
+      spec_idx=spec_idx+1;
+      if(spec_idx>=spec_dim){
+        SV_process_audio();
+        if (is_enroll){WC_process_audio();}
+        PT_YIELD(pt);
+        Serial.print("is enroll: "); Serial.println(is_enroll);
+        Serial.print("total words: "); Serial.println(total_words);
+        Serial.println();
+        spec_idx=0;
+      }
+    }
+    spectogramFile.close();
+    SD.remove("Specto.txt");
+    SVWC=0;
+    SD.remove("numW.txt");
+    numFile=SD.open("numW.txt",FILE_WRITE);
+    numFile.println(total_words);
+    numFile.close();
+    }
+     PT_YIELD(pt);
+    }
+  PT_END(pt);
+  }
+
+pt ptDisplay; //모드에 맞는 디스플레이용 pt
+int displayThread(struct pt* pt){
+  PT_BEGIN(pt);
+  for(;;){
+    PT_YIELD(pt);
+    if(light==1){ //일단 불이 들어와있으면
+      if(SVWC==0){
+            if(mode==1){onRecording(total_words);}
+              else if(mode==0){onStop(total_words);}
+              else {forLearning("Press Button, and Say Something...");}//모드 0,1,2일때 해당하는 화면 디스플레이
+      }   else{onCounting(total_words);} //측정 중이면 Counting.
+      } else{lightOff();} // 불 안들어와있으면 꺼줌.
+      
+      if(millis()-last_control>100000){ //마지막 조작에서 10초 이상 지나면 -> 일단 100초로 해둠.
+        light=0;
+        lightOff(); //불 끄고
+        PT_YIELD(pt);
+        PT_WAIT_UNTIL(pt,light==1); //다시 조작할때까지(불켜질 때까지) 기다림.
+        }
+      PT_YIELD(pt);
+  }
+  PT_END(pt);
+  }
+
+
+
+///////////////////////////////////////////////////////////////
+///////////////////////////Func////////////////////////////////
+///////////////////////////////////////////////////////////////
+
+
+
+void setup() {
+    Serial.begin(9600);
+    pinMode(2, INPUT_PULLUP);
+    pinMode(4, INPUT_PULLUP); //조작 버튼 두 개 핀모드 설정
+
+    SD.begin(10); //SD카드 시작, CS핀 10번
+    while(!SD.begin(10)){Serial.println("Initializing SD...");}
+  
+  // 에러 리포터 빌드
+  static tflite::MicroErrorReporter micro_error_reporter;
+  error_reporter = &micro_error_reporter;
+
+  // enroll_dvec 임의로 설정
+  for (int i=0;i<10;i++){ enroll_dvec[i]=1; }
+
+  if(SD.exists("enroll.txt")){ //기존 학습 결과 있으면 불러옴.
+    enrollFile=SD.open("enroll.txt");
+    int enroll_idx=0;
+    while(enrollFile.available()){
+      if(enroll_idx<dvec_dim){
+        enroll_dvec[enroll_idx]=enrollFile.parseFloat();
+        enroll_idx=enroll_idx+1;
+      }else{enrollFile.read();}
+      
+    }
+    enrollFile.close();
+    }
+  normalize(enroll_dvec);
+  
+  //이전 측정값 불러오기
+  if(SD.exists("numW.txt")){
+    numFile=SD.open("numW.txt");
+    int w=0;
+    while(numFile.available()){
+    if(w==0){
+      w=w+1;
+      total_words=numFile.parseInt();}
+      else{numFile.read();}
+      
+    }
+    numFile.close();
+  }
+
+  //OLED 기본 설정
+    // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
+  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;); // Don't proceed, loop forever
+  }
+  // Clear the OLED buffer
+  display.clearDisplay();
+  display.display();
+
+  SV_setup();
+  WC_setup();
+
+  // FeatureProvider 생성
+  static FeatureProvider static_feature_provider(kFeatureElementCount, spec);
+  feature_provider = &static_feature_provider;
+
+  // 마이크 설정
+  PDM.onReceive(onPDMdata);
+  if(!PDM.begin(1,16000)){
+    Serial.println("Failed to start PDM!");
+    while(1);
+  }
+
+
+  // PT 세팅
+  PT_INIT(&ptState);
+  PT_INIT(&ptSpecto);
+  PT_INIT(&ptSVWC);
+  PT_INIT(&ptButton1Time);
+  PT_INIT(&ptButton2Time);
+  PT_INIT(&ptDisplay);
+  
+}
+
+void loop() {
+  PT_SCHEDULE(stateThread(&ptState));
+  PT_SCHEDULE(spectoThread(&ptSpecto));
+  PT_SCHEDULE(SVWCThread(&ptSVWC));
+  PT_SCHEDULE(button1TimeThread(&ptButton1Time));
+  PT_SCHEDULE(button2TimeThread(&ptButton2Time));
+  PT_SCHEDULE(displayThread(&ptDisplay));
+}
+
+
