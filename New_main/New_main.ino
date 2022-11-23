@@ -91,6 +91,8 @@ volatile unsigned long b2_in_time=1;
 volatile unsigned long b2_out_time=1;
 volatile unsigned long last_control=1;
 volatile unsigned long now=1;
+char fBuffer1[5];
+char fBuffer2[2];
 
 ///////////////////////////////////////////////////////////////
 /////////////////////////PT////////////////////////////////////
@@ -192,7 +194,7 @@ int button2TimeThread(struct pt* pt){
           enrollFile=SD.open("enroll.txt", FILE_WRITE); //enroll_dvec 저장
           for(int i=0; i<dvec_dim; i++){ 
             Serial.print(enroll_dvec[i]); 
-            enrollFile.println(enroll_dvec[i]);
+            enrollFile.println(int(enroll_dvec[i]*100));
             }
             enrollFile.close();
           Buffer_idx=0;
@@ -245,7 +247,7 @@ int SVWCThread(struct pt* pt){
         Serial.print("is enroll: "); Serial.println(is_enroll);
         Serial.print("total words: "); Serial.println(total_words);
         Serial.println();
-        spec_idx=0;        
+        spec_idx=0;
       }
     }
     spectogramFile.close();
@@ -305,11 +307,9 @@ void setup() {
   if(SD.exists("enroll.txt")){ //기존 학습 결과 있으면 불러옴.
     enrollFile=SD.open("enroll.txt");
     int enroll_idx=0;
-    float tmp=0;
     while(enrollFile.available()){
-      tmp=enrollFile.read();
       if(enroll_idx<dvec_dim){
-        enroll_dvec[enroll_idx]=tmp;
+        enroll_dvec[enroll_idx]=float(enrollFile.parseInt())/100;
         Serial.println(enroll_dvec[enroll_idx]);
         enroll_idx=enroll_idx+1;
       }
