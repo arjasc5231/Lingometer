@@ -183,7 +183,8 @@ int button2TimeThread(struct pt* pt){
           b2_out_time=millis();
           last_control=millis();
           Serial.println("mode 2 recording Finished");
-          //update_enroll_dvec(Buffer+8000,16000);
+          update_enroll_dvec(Buffer+8000,16000);
+          normalize(enroll_dvec);
           Serial.println("enroll_dvec Updated"); //enroll_dvec 초기화
           
           SD.remove("enroll.txt");
@@ -230,13 +231,7 @@ int SVWCThread(struct pt* pt){
   PT_BEGIN(pt);
   for(;;){
     if (SVWC==1){
-  /*
-  Serial.print("spectrogram: ");
-  for (int i=0; i<spec_dim; i++){ Serial.print(spec[i]); Serial.print(" ");}
-  Serial.println();
-  Serial.print("spectrogram len=");
-  Serial.println(spec_dim);
-  */
+    Serial.println("Start SVWC");
     SV_process_audio();
     if (is_enroll){WC_process_audio();}
     Serial.print("is enroll: "); Serial.println(is_enroll);
@@ -302,6 +297,7 @@ void setup() {
       tmp=enrollFile.read();
       if(enroll_idx<dvec_dim){
         enroll_dvec[enroll_idx]=tmp;
+        Serial.println(enroll_dvec[enroll_idx]);
         enroll_idx=enroll_idx+1;
       }
     }
