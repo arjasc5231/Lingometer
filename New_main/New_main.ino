@@ -31,7 +31,9 @@ tflite::ErrorReporter* error_reporter = nullptr;
 FeatureProvider* feature_provider = nullptr;
 
 int total_words=0; // 총 단어 수
-float enroll_dvec[dvec_dim]; // 화자 등록 d-vector (normalized)
+float enroll_dvec1[dvec_dim]; // 화자 등록 d-vector (normalized)
+float enroll_dvec2[dvec_dim];
+float enroll_dvec3[dvec_dim];
 float SV_thres = 0.0; // SV 역치
 float VAD_thres = 0.0; // VAD 역치
 
@@ -248,7 +250,7 @@ void SV_process_audio() {
   float SV_output1[dvec_dim];
   SV_call(SV_input1, SV_output1);
   normalize(SV_output1);
-  float score1 = cos_sim(enroll_dvec, SV_output1);
+  float score1 = (cos_sim(enroll_dvec1, SV_output1)+cos_sim(enroll_dvec2, SV_output1)+cos_sim(enroll_dvec3, SV_output1))/3;
 
 //  Serial.print("SV vector1: ");
 //  for (int i=0; i<dvec_dim; i++){ Serial.print(SV_output1[i]); Serial.print(" ");}
@@ -260,7 +262,7 @@ void SV_process_audio() {
   float SV_output2[dvec_dim];
   SV_call(SV_input2, SV_output2);
   normalize(SV_output2);
-  float score2 = cos_sim(enroll_dvec, SV_output2);
+  float score2 = (cos_sim(enroll_dvec1, SV_output2)+cos_sim(enroll_dvec2, SV_output2)+cos_sim(enroll_dvec3, SV_output2))/3;
 
   Serial.println();
   Serial.print("SV score2: "); Serial.println(score2);
@@ -283,12 +285,17 @@ void update_enroll_dvec(short* audio, int audio_len){
   int8_t spec[kFeatureElementCount];
   size_t num_samples_read;
   feature_provider->PopulateFeatureData(error_reporter, audio, audio_len, spec);
+
+  for (int i=0;i<dvec_dim;i++){
+    enroll_dvec1[i] = enroll_dvec2[i];
+    enroll_dvec2[i] = enroll_dvec3[i];
+  }
   
   float SV_output[dvec_dim];
   SV_call(spec, SV_output);
   normalize(SV_output);
   for (int i=0;i<dvec_dim;i++){
-    enroll_dvec[i] = SV_output[i]; 
+    enroll_dvec3[i] = SV_output[i]; 
   }
 }
 
@@ -395,19 +402,38 @@ int button2TimeThread(struct pt* pt){
           last_control=millis();
           Serial.println("mode 2 recording Finished");
 
-          for(int i=0;i<dvec_dim;i++){Serial.print(enroll_dvec[i]);}
+          for(int i=0;i<dvec_dim;i++){Serial.print(enroll_dvec3[i]);}
 
           update_enroll_dvec(Buffer+8000,16000);
-          normalize(enroll_dvec);
           Serial.println("enroll_dvec Updated"); //enroll_dvec 초기화
           
-          SD.remove("enroll.txt");
-          enrollFile=SD.open("enroll.txt", FILE_WRITE); //enroll_dvec 저장
+          SD.remove("enroll1.txt");
+          enrollFile=SD.open("enroll1.txt", FILE_WRITE); //enroll_dvec 저장
           for(int i=0; i<dvec_dim; i++){ 
-            Serial.print(enroll_dvec[i]); 
-            enrollFile.println(enroll_dvec[i]);
+            Serial.print(enroll_dvec1[i]); 
+            enrollFile.println(enroll_dvec1[i]);
             }
             enrollFile.close();
+          Serial.println();
+          
+          SD.remove("enroll2.txt");
+          enrollFile=SD.open("enroll2.txt", FILE_WRITE); //enroll_dvec 저장
+          for(int i=0; i<dvec_dim; i++){ 
+            Serial.print(enroll_dvec2[i]); 
+            enrollFile.println(enroll_dvec2[i]);
+            }
+            enrollFile.close();
+          Serial.println();
+          
+          SD.remove("enroll3.txt");
+          enrollFile=SD.open("enroll3.txt", FILE_WRITE); //enroll_dvec 저장
+          for(int i=0; i<dvec_dim; i++){ 
+            Serial.print(enroll_dvec3[i]); 
+            enrollFile.println(enroll_dvec3[i]);
+            }
+            enrollFile.close();
+          Serial.println();
+
           Buffer_idx=0;
           mode=0; //학습 다했으면 일시정지 상태로 만들기
           }
@@ -520,21 +546,49 @@ void setup() {
   error_reporter = &micro_error_reporter;
 
   // enroll_dvec 임의로 설정
-  for (int i=0;i<10;i++){ enroll_dvec[i]=1; }
+  for (int i=0;i<10;i++){ enroll_dvec1[i]=1;enroll_dvec2[i]=1;enroll_dvec3[i]=1; }
 
-  if(SD.exists("enroll.txt")){ //기존 학습 결과 있으면 불러옴.
-    enrollFile=SD.open("enroll.txt");
+  if(SD.exists("enroll1.txt")){ //기존 학습 결과 있으면 불러옴.
+    enrollFile=SD.open("enroll1.txt");
     int enroll_idx=0;
     while(enrollFile.available()){
       if(enroll_idx<dvec_dim){
-        enroll_dvec[enroll_idx]=enrollFile.parseFloat();
+        enroll_dvec1[enroll_idx]=enrollFile.parseFloat();
         enroll_idx=enroll_idx+1;
       }else{enrollFile.read();}
       
     }
     enrollFile.close();
     }
-  normalize(enroll_dvec);
+  normalize(enroll_dvec1);
+
+  if(SD.exists("enroll2.txt")){ //기존 학습 결과 있으면 불러옴.
+    enrollFile=SD.open("enroll2.txt");
+    int enroll_idx=0;
+    while(enrollFile.available()){
+      if(enroll_idx<dvec_dim){
+        enroll_dvec2[enroll_idx]=enrollFile.parseFloat();
+        enroll_idx=enroll_idx+1;
+      }else{enrollFile.read();}
+      
+    }
+    enrollFile.close();
+    }
+  normalize(enroll_dvec2);
+
+  if(SD.exists("enroll3.txt")){ //기존 학습 결과 있으면 불러옴.
+    enrollFile=SD.open("enroll3.txt");
+    int enroll_idx=0;
+    while(enrollFile.available()){
+      if(enroll_idx<dvec_dim){
+        enroll_dvec3[enroll_idx]=enrollFile.parseFloat();
+        enroll_idx=enroll_idx+1;
+      }else{enrollFile.read();}
+      
+    }
+    enrollFile.close();
+    }
+  normalize(enroll_dvec3);
   
   //이전 측정값 불러오기
   if(SD.exists("numW.txt")){
